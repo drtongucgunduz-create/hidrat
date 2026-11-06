@@ -21,10 +21,152 @@ jobs:
       - name: Flutter Kur
         uses: subosito/flutter-action@v2
         with:
+          flutter-version: '3.24.5'
           channel: 'stable'
 
-      - name: Eksik Platform Dosyalarini Tamamla
-        run: flutter create . --project-name hidrat
+      - name: Proje Yapisini ve Klasorleri Otomatik Duzelt
+        run: |
+          # Eger dosyalar alt klasor olarak yuklendiyse ana dizine tasi
+          if [ -f "hidrat_app/pubspec.yaml" ] && [ ! -f "pubspec.yaml" ]; then
+            cp -r hidrat_app/* .
+          fi
+
+          # Eksik asset klasorlerini olustur
+          mkdir -p assets/images assets/sounds
+          touch assets/images/placeholder.png assets/sounds/placeholder.mp3
+
+          # Eger .txt uzantili dosyalar kaldiysa .dart'a cevir
+          for f in $(find lib -name "*.txt" 2>/dev/null); do
+            mv "$f" "${f%.txt}.dart"
+          done
+
+          # Flutter surum uyumlulugu icin withValues -> withOpacity duzeltmesi
+          find lib -name "*.dart" -exec sed -i 's/\.withValues(alpha: \([0-9.]*\))/\.withOpacity(\1)/g' {} +
+          find lib -name "*.dart" -exec sed -i 's/activeThumbColor:/activeColor:/g' {} +
+
+          # Temiz Android/iOS platform dosyalarini olustur
+          rm -rf android ios
+          flutter create --org com.hidrat.app --project-name hidrat .
+
+          # pubspec.yaml icindeki paketleri AGP 8 uyumlu surumlere guncelle
+          cat > pubspec.yaml << 'EOF'
+          name: hidrat
+          description: Su Icme Hatirlaticisi - Gunluk su takip uygulamasi
+          publish_to: 'none'
+          version: 1.0.0+1
+
+          environment:
+            sdk: '>=3.1.0 <4.0.0'
+
+          dependencies:
+            flutter:
+              sdk: flutter
+            cupertino_icons: ^1.0.6
+            google_mobile_ads: ^5.1.0
+            shared_preferences: ^2.2.3
+            flutter_local_notifications: ^17.2.2
+            intl: ^0.19.0
+            provider: ^6.1.2
+            fl_chart: ^0.68.0
+
+          dev_dependencies:
+            flutter_test:
+              sdk: flutter
+            flutter_lints: ^3.0.1
+
+          flutter:
+            uses-material-design: true
+            assets:
+              - assets/images/
+              - assets/sounds/
+          EOF
+
+          # AndroidManifest.xml icine AdMob Test App ID ve Bildirim izinlerini ekle
+          cat > android/app/src/main/AndroidManifest.xml << 'EOF'
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <uses-permission android:name="android.permission.INTERNET"/>
+              <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+              <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+              <uses-permission android:name="android.permission.VIBRATE"/>
+
+              <application
+                  android:label="Hidrat"
+                  android:name="${applicationName}"
+                  android:icon="@mipmap/ic_launcher">
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true"
+                      android:launchMode="singleTop"
+                      android:theme="@style/LaunchTheme"
+                      android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+                      android:hardwareAccelerated="true"
+                      android:windowSoftInputMode="adjustResize">
+                      <meta-data
+                        android:name="io.flutter.embedding.android.NormalTheme"
+                        android:resource="@style/NormalTheme"
+                        />
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN"/>
+                          <category android:name="android.intent.category.LAUNCHER"/>
+                      </intent-filter>
+                  </activity>
+                  <meta-data
+                      android:name="com.google.android.gms.ads.APPLICATION_ID"
+                      android:value="ca-app-pub-3940256099942544~3347511713"/>
+                  <meta-data
+                      android:name="flutterEmbedding"
+                      android:value="2" />
+              </application>
+          </manifest>
+          EOF
+
+          # android/app/build.gradle dosyasini minSdk 21 ve coreLibraryDesugaring ile yapilandir
+          cat > android/app/build.gradle << 'EOF'
+          plugins {
+              id "com.android.application"
+              id "kotlin-android"
+              id "dev.flutter.flutter-gradle-plugin"
+          }
+
+          android {
+              namespace = "com.hidrat.app"
+              compileSdk = 34
+              ndkVersion = flutter.ndkVersion
+
+              compileOptions {
+                  coreLibraryDesugaringEnabled true
+                  sourceCompatibility = JavaVersion.VERSION_1_8
+                  targetCompatibility = JavaVersion.VERSION_1_8
+              }
+
+              kotlinOptions {
+                  jvmTarget = JavaVersion.VERSION_1_8
+              }
+
+              defaultConfig {
+                  applicationId = "com.hidrat.app"
+                  minSdk = 21
+                  targetSdk = 34
+                  versionCode = 1
+                  versionName = "1.0.0"
+                  multiDexEnabled true
+              }
+
+              buildTypes {
+                  release {
+                      signingConfig = signingConfigs.debug
+                  }
+              }
+          }
+
+          flutter {
+              source = "../.."
+          }
+
+          dependencies {
+              coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.0.4'
+          }
+          EOF
 
       - name: Bagimliliklari Yukle
         run: flutter pub get
