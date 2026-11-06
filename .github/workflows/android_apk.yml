@@ -1,0 +1,39 @@
+name: Android APK Olustur
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Kodlari Indir
+        uses: actions/checkout@v4
+
+      - name: Java 17 Kur
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Flutter Kur
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+
+      - name: Eksik Platform Dosyalarini Tamamla
+        run: flutter create . --project-name hidrat
+
+      - name: Bagimliliklari Yukle
+        run: flutter pub get
+
+      - name: Release APK Derle
+        run: flutter build apk --release
+
+      - name: APK Dosyasini Yukle (Indirilebilir Artifact)
+        uses: actions/upload-artifact@v4
+        with:
+          name: hidrat-release-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
