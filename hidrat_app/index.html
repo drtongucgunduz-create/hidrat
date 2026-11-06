@@ -1,0 +1,1296 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#2196F3" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Hidrat" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" type="image/svg+xml" href="icon.svg" />
+  <link rel="apple-touch-icon" href="icon.svg" />
+  <title>💧 Hidrat - Su İçme Hatırlatıcısı</title>
+  <style>
+    :root {
+      --primary: #2196F3;
+      --primary-dark: #1976D2;
+      --primary-light: #64B5F6;
+      --primary-bg: #E3F2FD;
+      --success: #4CAF50;
+      --danger: #EF5350;
+      --warning: #FF9800;
+      --bg: #F5F9FF;
+      --card: #FFFFFF;
+      --text: #1E293B;
+      --muted: #64748B;
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: 'Segoe UI', Roboto, system-ui, -apple-system, sans-serif;
+      -webkit-tap-highlight-color: transparent;
+    }
+    body {
+      background: linear-gradient(135deg, #e0f2fe 0%, #f0f9ff 100%);
+      color: var(--text);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      min-height: 100dvh;
+      padding: 16px;
+    }
+    .app-shell {
+      width: 100%;
+      max-width: 430px;
+      height: 850px;
+      max-height: 95vh;
+      background: var(--bg);
+      border-radius: 32px;
+      box-shadow: 0 20px 50px rgba(33, 150, 243, 0.2), 0 0 0 8px #ffffff;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      position: relative;
+    }
+    @media (max-width: 500px) {
+      body {
+        padding: 0;
+        background: var(--bg);
+      }
+      .app-shell {
+        max-width: 100%;
+        height: 100vh;
+        height: 100dvh;
+        max-height: 100dvh;
+        border-radius: 0;
+        box-shadow: none;
+      }
+    }
+    .app-bar {
+      background: var(--primary);
+      color: #fff;
+      padding: calc(14px + env(safe-area-inset-top, 0px)) 20px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 18px;
+      font-weight: 700;
+      box-shadow: 0 2px 8px rgba(33, 150, 243, 0.25);
+      z-index: 2;
+    }
+    .app-bar .date-btn {
+      background: rgba(255, 255, 255, 0.18);
+      border: none;
+      color: #fff;
+      padding: 8px 12px;
+      border-radius: 12px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: background 0.2s;
+    }
+    .app-bar .date-btn:hover {
+      background: rgba(255, 255, 255, 0.3);
+    }
+    .install-banner {
+      background: linear-gradient(90deg, #1565C0, #1E88E5);
+      color: #fff;
+      padding: 10px 16px;
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .install-banner.show {
+      display: flex;
+    }
+    .install-banner button {
+      background: #fff;
+      color: #1565C0;
+      border: none;
+      border-radius: 8px;
+      padding: 6px 12px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .history-banner {
+      background: var(--primary-bg);
+      color: var(--primary-dark);
+      padding: 10px 16px;
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 13px;
+      font-weight: 600;
+      border-bottom: 1px solid rgba(33, 150, 243, 0.2);
+    }
+    .history-banner.active {
+      display: flex;
+    }
+    .history-banner button {
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 5px 10px;
+      font-size: 12px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    .content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px;
+    }
+    .tab-page {
+      display: none;
+      animation: fadeIn 0.2s ease;
+    }
+    .tab-page.active {
+      display: block;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    /* Ana Sayfa */
+    .gauge-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin-bottom: 22px;
+    }
+    canvas#waterCanvas {
+      width: 200px;
+      height: 200px;
+    }
+    .percent-text {
+      font-size: 44px;
+      font-weight: 800;
+      color: var(--primary);
+      margin-top: 6px;
+      transition: color 0.3s;
+    }
+    .percent-text.completed {
+      color: var(--success);
+    }
+    .amount-subtext {
+      font-size: 17px;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+    .goal-badge {
+      display: none;
+      margin-top: 10px;
+      background: var(--success);
+      color: #fff;
+      padding: 7px 18px;
+      border-radius: 999px;
+      font-size: 14px;
+      font-weight: 700;
+      align-items: center;
+      gap: 6px;
+    }
+    .goal-badge.show {
+      display: inline-flex;
+    }
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    .section-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--primary);
+    }
+    .undo-btn {
+      background: #FEE2E2;
+      color: #DC2626;
+      border: none;
+      padding: 6px 12px;
+      border-radius: 10px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      display: none;
+      align-items: center;
+      gap: 4px;
+    }
+    .undo-btn.show {
+      display: inline-flex;
+    }
+    .cup-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    .cup-btn {
+      background: var(--card);
+      border: 2px solid var(--primary-light);
+      border-radius: 18px;
+      padding: 12px 6px;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+    .cup-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 14px rgba(33, 150, 243, 0.15);
+    }
+    .cup-btn:active {
+      transform: scale(0.95);
+    }
+    .cup-emoji {
+      font-size: 28px;
+    }
+    .cup-name {
+      font-size: 12px;
+      font-weight: 600;
+      text-align: center;
+      line-height: 1.2;
+    }
+    .cup-ml {
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .custom-add-row {
+      display: flex;
+      gap: 10px;
+    }
+    .custom-add-row input {
+      flex: 1;
+      padding: 14px 16px;
+      border: 1.5px solid #CBD5E1;
+      border-radius: 12px;
+      font-size: 15px;
+      outline: none;
+      background: #fff;
+    }
+    .custom-add-row input:focus {
+      border-color: var(--primary);
+    }
+    .primary-btn {
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      padding: 14px 22px;
+      border-radius: 12px;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .primary-btn:hover {
+      background: var(--primary-dark);
+    }
+    /* İstatistik */
+    .hero-card {
+      background: linear-gradient(135deg, var(--primary), var(--primary-light));
+      color: #fff;
+      padding: 22px;
+      border-radius: 20px;
+      text-align: center;
+      box-shadow: 0 8px 20px rgba(33, 150, 243, 0.28);
+      margin-bottom: 22px;
+    }
+    .hero-card .big-num {
+      font-size: 32px;
+      font-weight: 800;
+      margin: 6px 0;
+    }
+    .chart-box {
+      background: #fff;
+      border-radius: 20px;
+      padding: 18px 14px 12px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+      margin-bottom: 20px;
+    }
+    .bars-wrap {
+      height: 190px;
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-around;
+      gap: 8px;
+      padding-top: 24px;
+      border-bottom: 1px solid #E2E8F0;
+    }
+    .bar-col {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      height: 100%;
+      justify-content: flex-end;
+    }
+    .bar-val {
+      font-size: 10px;
+      color: var(--muted);
+      margin-bottom: 4px;
+      font-weight: 600;
+    }
+    .bar-fill {
+      width: 24px;
+      background: var(--primary);
+      border-radius: 8px 8px 0 0;
+      transition: height 0.4s ease;
+      min-height: 4px;
+    }
+    .bar-fill.goal-met {
+      background: var(--success);
+    }
+    .bar-fill.today {
+      box-shadow: 0 0 0 2px rgba(21, 101, 192, 0.3);
+    }
+    .bar-days {
+      display: flex;
+      justify-content: space-around;
+      margin-top: 8px;
+    }
+    .bar-day-label {
+      flex: 1;
+      text-align: center;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .bar-day-label.today {
+      color: var(--primary-dark);
+      font-weight: 700;
+    }
+    .stat-card {
+      background: #fff;
+      border-radius: 16px;
+      padding: 15px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 12px;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.03);
+    }
+    .stat-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+    }
+    .stat-info .label {
+      font-size: 13px;
+      color: var(--muted);
+    }
+    .stat-info .val {
+      font-size: 19px;
+      font-weight: 800;
+      margin-top: 2px;
+    }
+    /* Hatırlatıcı & Ayarlar */
+    .switch-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      text-align: left;
+    }
+    .freq-card {
+      background: #fff;
+      border-radius: 12px;
+      padding: 14px 16px;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      cursor: pointer;
+      border: 2px solid transparent;
+      transition: all 0.15s;
+    }
+    .freq-card.selected {
+      border-color: var(--primary);
+      background: #EFF6FF;
+      font-weight: 700;
+    }
+    .time-row {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      margin-top: 12px;
+    }
+    .time-box {
+      flex: 1;
+      background: #fff;
+      border: 1.5px solid rgba(33, 150, 243, 0.3);
+      border-radius: 12px;
+      padding: 12px;
+      text-align: center;
+    }
+    .time-box label {
+      display: block;
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+    .time-box input[type="time"] {
+      border: none;
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--primary);
+      background: transparent;
+      outline: none;
+      cursor: pointer;
+    }
+    .settings-group {
+      background: #fff;
+      border-radius: 16px;
+      overflow: hidden;
+      margin-bottom: 18px;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.03);
+    }
+    .setting-item {
+      padding: 15px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid #F1F5F9;
+      cursor: pointer;
+    }
+    .setting-item:last-child {
+      border-bottom: none;
+    }
+    .setting-item:hover {
+      background: #F8FAFC;
+    }
+    .setting-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .setting-title {
+      font-size: 15px;
+      font-weight: 600;
+    }
+    .setting-sub {
+      font-size: 13px;
+      color: var(--muted);
+    }
+    /* Bottom Nav */
+    .bottom-nav {
+      background: #fff;
+      border-top: 1px solid #E2E8F0;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      padding: 8px 6px calc(8px + env(safe-area-inset-bottom, 0px));
+    }
+    .nav-btn {
+      background: none;
+      border: none;
+      padding: 8px 4px;
+      border-radius: 14px;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+    .nav-btn.active {
+      color: var(--primary-dark);
+      background: var(--primary-bg);
+    }
+    .toast {
+      position: absolute;
+      bottom: 78px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #1E293B;
+      color: #fff;
+      padding: 10px 18px;
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: 600;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s;
+      z-index: 20;
+      white-space: nowrap;
+    }
+    .toast.show {
+      opacity: 1;
+    }
+    /* Modal */
+    .modal-backdrop {
+      position: absolute;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.55);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      z-index: 30;
+    }
+    .modal-backdrop.show {
+      display: flex;
+    }
+    .modal-card {
+      background: #fff;
+      border-radius: 20px;
+      padding: 22px;
+      width: 100%;
+      max-width: 360px;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+    }
+    .modal-card h3 {
+      font-size: 18px;
+      color: var(--primary-dark);
+      margin-bottom: 10px;
+    }
+    .modal-card p, .modal-card li {
+      font-size: 13.5px;
+      color: var(--text);
+      line-height: 1.5;
+      margin-bottom: 8px;
+    }
+    .modal-card ol {
+      padding-left: 18px;
+      margin-bottom: 14px;
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <div class="app-bar">
+      <span id="appBarTitle">💧 Merhaba, Kullanıcı</span>
+      <label class="date-btn" title="Tarih Seç">
+        📅 <span id="selectedDateBtnText">Bugün</span>
+        <input type="date" id="datePickerInput" style="position:absolute;opacity:0;width:1px;height:1px;" />
+      </label>
+    </div>
+
+    <div class="install-banner" id="installBanner">
+      <span>📲 Hidrat'ı telefonuna uygulama olarak kur!</span>
+      <button onclick="installAppPrompt()">Yükle</button>
+    </div>
+
+    <div class="history-banner" id="historyBanner">
+      <span>🕒 Seçili Tarih: <strong id="historyDateText"></strong></span>
+      <button onclick="goToToday()">Bugüne Dön</button>
+    </div>
+
+    <div class="content">
+      <!-- 1. ANA SAYFA -->
+      <div class="tab-page active" id="tab-0">
+        <div class="gauge-wrap">
+          <canvas id="waterCanvas" width="400" height="400"></canvas>
+          <div class="percent-text" id="percentText">%0</div>
+          <div class="amount-subtext" id="amountSubtext">0 / 2500 ml</div>
+          <div class="goal-badge" id="goalBadge">🏆 Hedef Tamamlandı!</div>
+        </div>
+
+        <div class="section-header">
+          <span class="section-title">Hızlı Ekle 💧</span>
+          <button class="undo-btn" id="undoBtn" onclick="undoWater()">↩ Geri Al</button>
+        </div>
+
+        <div class="cup-grid">
+          <button class="cup-btn" onclick="addCustomCup()">
+            <span class="cup-emoji">🥛</span>
+            <span class="cup-name">Bardak<br>(Özel)</span>
+            <span class="cup-ml" id="customCupMlText">250 ml</span>
+          </button>
+          <button class="cup-btn" onclick="addWater(330)">
+            <span class="cup-emoji">🥤</span>
+            <span class="cup-name">Büyük<br>Bardak</span>
+            <span class="cup-ml">330 ml</span>
+          </button>
+          <button class="cup-btn" onclick="addWater(500)">
+            <span class="cup-emoji">🍶</span>
+            <span class="cup-name">Küçük<br>Şişe</span>
+            <span class="cup-ml">500 ml</span>
+          </button>
+          <button class="cup-btn" onclick="addWater(1000)">
+            <span class="cup-emoji">🫗</span>
+            <span class="cup-name">Sürahi</span>
+            <span class="cup-ml">1000 ml</span>
+          </button>
+        </div>
+
+        <div class="custom-add-row">
+          <input type="number" id="customMlInput" placeholder="Özel miktar (ml)" min="1" max="5000" />
+          <button class="primary-btn" onclick="submitCustomMl()">Ekle</button>
+        </div>
+      </div>
+
+      <!-- 2. İSTATİSTİK -->
+      <div class="tab-page" id="tab-1">
+        <div class="hero-card">
+          <div style="opacity:0.85;font-size:15px;">Bugün İçilen</div>
+          <div class="big-num" id="statTodayAmount">0 / 2500 ml</div>
+          <div style="opacity:0.85;font-size:14px;" id="statTodayPercent">%0 tamamlandı</div>
+        </div>
+
+        <div class="section-title" style="margin-bottom:10px;">📈 Son 7 Gün</div>
+        <div class="chart-box">
+          <div class="bars-wrap" id="chartBars"></div>
+          <div class="bar-days" id="chartDays"></div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-icon" style="background:#FFF3E0;color:#FF9800;">🔥</div>
+          <div class="stat-info">
+            <div class="label">Mevcut Seri / En İyi Seri</div>
+            <div class="val" style="color:#FF9800;" id="statStreak">0 gün (Rekor: 0 gün)</div>
+          </div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-icon" style="background:#E3F2FD;color:#2196F3;">💧</div>
+          <div class="stat-info">
+            <div class="label">Toplam İçilen</div>
+            <div class="val" style="color:#2196F3;" id="statTotal">0 ml</div>
+          </div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-icon" style="background:#E8F5E9;color:#4CAF50;">📅</div>
+          <div class="stat-info">
+            <div class="label">Ortalama / Gün</div>
+            <div class="val" style="color:#4CAF50;" id="statAvg">0 ml</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3. HATIRLATICI -->
+      <div class="tab-page" id="tab-2">
+        <div class="hero-card switch-row">
+          <div>
+            <div style="font-size:19px;font-weight:800;">🔔 Hatırlatıcılar</div>
+            <div style="font-size:13px;opacity:0.85;margin-top:2px;">Su içmeyi unutma!</div>
+          </div>
+          <input type="checkbox" id="reminderToggle" style="width:22px;height:22px;cursor:pointer;" onchange="toggleReminder(this.checked)" />
+        </div>
+
+        <div class="section-title" style="margin-bottom:10px;">Hatırlatma Sıklığı</div>
+        <div id="freqList"></div>
+
+        <div class="section-title" style="margin-top:20px;">Sessiz Saatler</div>
+        <div style="font-size:13px;color:var(--muted);margin-top:2px;">Bu saatler arasında bildirim gelmez</div>
+        <div class="time-row">
+          <div class="time-box">
+            <label>Başlangıç</label>
+            <input type="time" id="quietStartInput" onchange="updateQuietHours()" />
+          </div>
+          <span>—</span>
+          <div class="time-box">
+            <label>Bitiş</label>
+            <input type="time" id="quietEndInput" onchange="updateQuietHours()" />
+          </div>
+        </div>
+
+        <button class="primary-btn" style="width:100%;margin-top:22px;" onclick="sendTestNotification()">
+          🔔 Test Bildirimi Gönder
+        </button>
+      </div>
+
+      <!-- 4. AYARLAR -->
+      <div class="tab-page" id="tab-3">
+        <div class="section-title" style="margin-bottom:8px;">📲 Telefon Uygulaması</div>
+        <div class="settings-group">
+          <div class="setting-item" onclick="showMobileGuide()">
+            <div class="setting-left">
+              <span>📱</span>
+              <div>
+                <div class="setting-title" style="color:var(--primary-dark);">Telefona Uygulama Olarak Kur</div>
+                <div class="setting-sub">Android APK & Ana Ekrana Ekleme Rehberi</div>
+              </div>
+            </div>
+            <span>›</span>
+          </div>
+        </div>
+
+        <div class="section-title" style="margin-bottom:8px;">👤 Profil</div>
+        <div class="settings-group">
+          <div class="setting-item" onclick="editName()">
+            <div class="setting-left">
+              <span>👤</span>
+              <div>
+                <div class="setting-title">İsim</div>
+                <div class="setting-sub" id="setNameText">Kullanıcı</div>
+              </div>
+            </div>
+            <span>›</span>
+          </div>
+          <div class="setting-item" onclick="editWeight()">
+            <div class="setting-left">
+              <span>⚖️</span>
+              <div>
+                <div class="setting-title">Kilo</div>
+                <div class="setting-sub" id="setWeightText">70 kg</div>
+              </div>
+            </div>
+            <span>›</span>
+          </div>
+        </div>
+
+        <div class="section-title" style="margin-bottom:8px;">🎯 Su Hedefi</div>
+        <div class="settings-group">
+          <div class="setting-item" onclick="editGoal()">
+            <div class="setting-left">
+              <span>🏁</span>
+              <div>
+                <div class="setting-title">Günlük Hedef</div>
+                <div class="setting-sub" id="setGoalText">2500 ml</div>
+              </div>
+            </div>
+            <span>›</span>
+          </div>
+          <div class="setting-item" onclick="editCupSize()">
+            <div class="setting-left">
+              <span>🥛</span>
+              <div>
+                <div class="setting-title">Varsayılan Bardak Boyutu</div>
+                <div class="setting-sub" id="setCupText">250 ml</div>
+              </div>
+            </div>
+            <span>›</span>
+          </div>
+        </div>
+
+        <div class="section-title" style="margin-bottom:8px;">💾 Veri</div>
+        <div class="settings-group">
+          <div class="setting-item" onclick="resetAllData()">
+            <div class="setting-left">
+              <span>🗑️</span>
+              <div>
+                <div class="setting-title" style="color:var(--danger);">Verileri Sıfırla</div>
+                <div class="setting-sub">Tüm su takip geçmişini temizle</div>
+              </div>
+            </div>
+            <span>›</span>
+          </div>
+        </div>
+
+        <div style="text-align:center;margin-top:20px;color:var(--muted);font-size:13px;">
+          <div style="font-size:28px;">💧</div>
+          <strong style="color:var(--text);">Hidrat v1.0.0</strong><br />
+          Su içmeyi unutma!
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-backdrop" id="mobileGuideModal" onclick="if(event.target===this)this.classList.remove('show')">
+      <div class="modal-card">
+        <h3>📱 Telefona Nasıl Kurulur?</h3>
+        <p><strong>Yöntem 1: Anında Kurulum (Android & iPhone)</strong></p>
+        <ol>
+          <li>Klasördeki <code>TELEFONDAN_AC.bat</code> dosyasına çift tıklayın.</li>
+          <li>Telefonunuzun kamerasıyla ekrandaki QR kodu okutun.</li>
+          <li>Tarayıcı menüsünden <strong>"Uygulamayı Yükle"</strong> veya <strong>"Ana Ekrana Ekle"</strong> seçeneğine dokunun.</li>
+        </ol>
+        <p><strong>Yöntem 2: Doğrudan `.apk` Dosyası İndirme</strong></p>
+        <ol>
+          <li>Proje klasörünü GitHub hesabınıza yükleyin.</li>
+          <li>Hazırlanan <code>.github/workflows/android_apk.yml</code> otomatik çalışarak <strong>Actions</strong> sekmesinde <code>app-release.apk</code> dosyasını üretir.</li>
+        </ol>
+        <button class="primary-btn" style="width:100%;" onclick="document.getElementById('mobileGuideModal').classList.remove('show')">Anladım</button>
+      </div>
+    </div>
+
+    <div class="toast" id="toastBox"></div>
+
+    <nav class="bottom-nav">
+      <button class="nav-btn active" onclick="switchTab(0)">
+        <span style="font-size:20px;">💧</span>
+        <span>Ana Sayfa</span>
+      </button>
+      <button class="nav-btn" onclick="switchTab(1)">
+        <span style="font-size:20px;">📊</span>
+        <span>İstatistik</span>
+      </button>
+      <button class="nav-btn" onclick="switchTab(2)">
+        <span style="font-size:20px;">⏰</span>
+        <span>Hatırlatıcı</span>
+      </button>
+      <button class="nav-btn" onclick="switchTab(3)">
+        <span style="font-size:20px;">⚙️</span>
+        <span>Ayarlar</span>
+      </button>
+    </nav>
+  </div>
+
+  <script>
+    // PWA Service Worker & Install Prompt
+    let deferredPrompt = null;
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').catch(() => {});
+      });
+    }
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+      document.getElementById('installBanner').classList.add('show');
+    });
+
+    function installAppPrompt() {
+      if (deferredPrompt) {
+        deferredPrompt.prompt();
+        deferredPrompt.userChoice.then(() => {
+          deferredPrompt = null;
+          document.getElementById('installBanner').classList.remove('show');
+        });
+      } else {
+        showMobileGuide();
+      }
+    }
+
+    function showMobileGuide() {
+      document.getElementById('mobileGuideModal').classList.add('show');
+    }
+
+    const STORAGE_KEY = 'hidrat_app_state_v1';
+    const GUNLER = ['Paz', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt'];
+
+    function bugunKey() {
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    }
+
+    let state = {
+      kullaniciAdi: 'Kullanıcı',
+      kilo: 70,
+      gunlukHedef: 2500,
+      bardakBoyutu: 250,
+      suGecmisi: {},
+      seciliTarih: bugunKey(),
+      sonEklenenMiktar: null,
+      hatirlaticiAcik: true,
+      hatirlatmaSikligi: 60,
+      sessizBaslangic: '22:00',
+      sessizBitis: '08:00',
+      enIyiSeri: 0
+    };
+
+    function yukle() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          state = { ...state, ...parsed, seciliTarih: bugunKey() };
+        }
+      } catch (e) {}
+      seriHesapla();
+      arayuzuGuncelle();
+    }
+
+    function kaydet() {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      } catch (e) {}
+    }
+
+    function showToast(msg) {
+      const t = document.getElementById('toastBox');
+      t.textContent = msg;
+      t.classList.add('show');
+      clearTimeout(window._toastTimer);
+      window._toastTimer = setTimeout(() => t.classList.remove('show'), 2200);
+    }
+
+    function seriHesapla() {
+      const hedef = Math.max(1, state.gunlukHedef);
+      const basarili = Object.entries(state.suGecmisi)
+        .filter(([_, ml]) => ml >= hedef)
+        .map(([k]) => new Date(k + 'T00:00:00'))
+        .sort((a, b) => a - b);
+
+      let maks = 0, anlik = 0, onceki = null;
+      for (const gun of basarili) {
+        if (!onceki) {
+          anlik = 1;
+        } else {
+          const fark = Math.round((gun - onceki) / 86400000);
+          if (fark === 1) anlik++;
+          else if (fark > 1) anlik = 1;
+        }
+        if (anlik > maks) maks = anlik;
+        onceki = gun;
+      }
+      if (maks > state.enIyiSeri) state.enIyiSeri = maks;
+    }
+
+    function mevcutSeriHesapla() {
+      const hedef = Math.max(1, state.gunlukHedef);
+      let d = new Date();
+      const keyFor = (dt) =>
+        `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+
+      if ((state.suGecmisi[keyFor(d)] || 0) < hedef) {
+        d.setDate(d.getDate() - 1);
+      }
+      let seri = 0;
+      while ((state.suGecmisi[keyFor(d)] || 0) >= hedef) {
+        seri++;
+        d.setDate(d.getDate() - 1);
+      }
+      return seri;
+    }
+
+    function addWater(ml) {
+      if (!ml || ml <= 0) return;
+      if (navigator.vibrate) navigator.vibrate(25);
+      const k = state.seciliTarih;
+      state.suGecmisi[k] = (state.suGecmisi[k] || 0) + ml;
+      state.sonEklenenMiktar = ml;
+      seriHesapla();
+      kaydet();
+      arayuzuGuncelle();
+      showToast(`+${ml} ml su eklendi 💧`);
+    }
+
+    function addCustomCup() {
+      addWater(state.bardakBoyutu);
+    }
+
+    function undoWater() {
+      const k = state.seciliTarih;
+      const mevcut = state.suGecmisi[k] || 0;
+      if (mevcut <= 0) return;
+      const dusulecek = state.sonEklenenMiktar || state.bardakBoyutu;
+      const yeni = Math.max(0, mevcut - dusulecek);
+      if (yeni === 0) delete state.suGecmisi[k];
+      else state.suGecmisi[k] = yeni;
+      state.sonEklenenMiktar = null;
+      seriHesapla();
+      kaydet();
+      arayuzuGuncelle();
+      showToast(`-${dusulecek} ml geri alındı`);
+    }
+
+    function submitCustomMl() {
+      const inp = document.getElementById('customMlInput');
+      const val = parseInt(inp.value, 10);
+      if (!val || val <= 0 || val > 5000) {
+        showToast('Lütfen 1 - 5000 ml arası bir değer girin');
+        return;
+      }
+      addWater(val);
+      inp.value = '';
+    }
+
+    document.getElementById('customMlInput').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') submitCustomMl();
+    });
+
+    const dateInput = document.getElementById('datePickerInput');
+    dateInput.max = bugunKey();
+    dateInput.addEventListener('change', (e) => {
+      if (e.target.value) {
+        state.seciliTarih = e.target.value;
+        state.sonEklenenMiktar = null;
+        arayuzuGuncelle();
+      }
+    });
+
+    function goToToday() {
+      state.seciliTarih = bugunKey();
+      state.sonEklenenMiktar = null;
+      arayuzuGuncelle();
+    }
+
+    function switchTab(idx) {
+      document.querySelectorAll('.tab-page').forEach((el, i) => {
+        el.classList.toggle('active', i === idx);
+      });
+      document.querySelectorAll('.nav-btn').forEach((el, i) => {
+        el.classList.toggle('active', i === idx);
+      });
+      arayuzuGuncelle();
+    }
+
+    function arayuzuGuncelle() {
+      const bugun = bugunKey();
+      const seciliBugunMu = state.seciliTarih === bugun;
+      const seciliIcilen = state.suGecmisi[state.seciliTarih] || 0;
+      const bugunIcilen = state.suGecmisi[bugun] || 0;
+      const hedef = Math.max(1, state.gunlukHedef);
+
+      document.getElementById('appBarTitle').textContent = `💧 Merhaba, ${state.kullaniciAdi}`;
+      document.getElementById('selectedDateBtnText').textContent = seciliBugunMu ? 'Bugün' : state.seciliTarih;
+
+      const banner = document.getElementById('historyBanner');
+      banner.classList.toggle('active', !seciliBugunMu);
+      document.getElementById('historyDateText').textContent = state.seciliTarih;
+
+      const yuzde = Math.round((seciliIcilen / hedef) * 100);
+      const pText = document.getElementById('percentText');
+      pText.textContent = `%${yuzde}`;
+      pText.classList.toggle('completed', seciliIcilen >= hedef);
+
+      document.getElementById('amountSubtext').textContent = `${seciliIcilen} / ${hedef} ml`;
+      document.getElementById('goalBadge').classList.toggle('show', seciliIcilen >= hedef);
+      document.getElementById('customCupMlText').textContent = `${state.bardakBoyutu} ml`;
+
+      const undoBtn = document.getElementById('undoBtn');
+      undoBtn.classList.toggle('show', seciliIcilen > 0);
+      undoBtn.textContent = `↩ -${state.sonEklenenMiktar || state.bardakBoyutu} ml Geri Al`;
+
+      // İstatistik
+      const bugunYuzde = Math.round((bugunIcilen / hedef) * 100);
+      document.getElementById('statTodayAmount').textContent = `${bugunIcilen} / ${hedef} ml`;
+      document.getElementById('statTodayPercent').textContent = `%${bugunYuzde} tamamlandı`;
+
+      const barsEl = document.getElementById('chartBars');
+      const daysEl = document.getElementById('chartDays');
+      barsEl.innerHTML = '';
+      daysEl.innerHTML = '';
+
+      const son7 = [];
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        son7.push({
+          gunAdi: GUNLER[d.getDay()],
+          miktar: state.suGecmisi[k] || 0,
+          bugunMu: i === 0
+        });
+      }
+
+      const tavan = Math.max(hedef * 1.25, ...son7.map((x) => x.miktar), 1000);
+      son7.forEach((item) => {
+        const hPct = Math.min(100, Math.round((item.miktar / tavan) * 100));
+        const col = document.createElement('div');
+        col.className = 'bar-col';
+        col.innerHTML = `
+          <div class="bar-val">${item.miktar > 0 ? item.miktar : ''}</div>
+          <div class="bar-fill ${item.miktar >= hedef ? 'goal-met' : ''} ${item.bugunMu ? 'today' : ''}" style="height:${Math.max(3, hPct)}%"></div>
+        `;
+        barsEl.appendChild(col);
+
+        const dLbl = document.createElement('div');
+        dLbl.className = `bar-day-label ${item.bugunMu ? 'today' : ''}`;
+        dLbl.textContent = item.gunAdi;
+        daysEl.appendChild(dLbl);
+      });
+
+      const toplam = Object.values(state.suGecmisi).reduce((a, b) => a + b, 0);
+      const aktifGunSayisi = Object.values(state.suGecmisi).filter((v) => v > 0).length;
+      const ort = aktifGunSayisi > 0 ? Math.round(toplam / aktifGunSayisi) : 0;
+
+      document.getElementById('statStreak').textContent = `${mevcutSeriHesapla()} gün (Rekor: ${state.enIyiSeri} gün)`;
+      document.getElementById('statTotal').textContent = `${toplam} ml`;
+      document.getElementById('statAvg').textContent = `${ort} ml`;
+
+      // Hatırlatıcı
+      document.getElementById('reminderToggle').checked = state.hatirlaticiAcik;
+      document.getElementById('quietStartInput').value = state.sessizBaslangic;
+      document.getElementById('quietEndInput').value = state.sessizBitis;
+
+      const freqOpts = [
+        { label: '30 dakikada bir', min: 30 },
+        { label: '1 saatte bir', min: 60 },
+        { label: '1.5 saatte bir', min: 90 },
+        { label: '2 saatte bir', min: 120 }
+      ];
+      const freqList = document.getElementById('freqList');
+      freqList.innerHTML = '';
+      freqOpts.forEach((o) => {
+        const div = document.createElement('div');
+        const secili = state.hatirlatmaSikligi === o.min;
+        div.className = `freq-card ${secili ? 'selected' : ''}`;
+        div.innerHTML = `<span>${secili ? '✅' : '⚪'}</span><span>${o.label}</span>`;
+        div.onclick = () => {
+          state.hatirlatmaSikligi = o.min;
+          kaydet();
+          arayuzuGuncelle();
+          showToast(`Hatırlatma sıklığı: ${o.label}`);
+        };
+        freqList.appendChild(div);
+      });
+
+      // Ayarlar
+      document.getElementById('setNameText').textContent = state.kullaniciAdi;
+      document.getElementById('setWeightText').textContent = `${state.kilo} kg (Önerilen: ${state.kilo * 35} ml)`;
+      document.getElementById('setGoalText').textContent = `${state.gunlukHedef} ml`;
+      document.getElementById('setCupText').textContent = `${state.bardakBoyutu} ml`;
+    }
+
+    function toggleReminder(val) {
+      state.hatirlaticiAcik = val;
+      kaydet();
+      showToast(val ? 'Hatırlatıcılar açıldı 🔔' : 'Hatırlatıcılar kapatıldı 🔕');
+    }
+
+    function updateQuietHours() {
+      state.sessizBaslangic = document.getElementById('quietStartInput').value || '22:00';
+      state.sessizBitis = document.getElementById('quietEndInput').value || '08:00';
+      kaydet();
+      showToast('Sessiz saatler güncellendi');
+    }
+
+    function sendTestNotification() {
+      if ('Notification' in window) {
+        if (Notification.permission === 'granted') {
+          new Notification('💧 Hidrat Su Hatırlatıcısı', {
+            body: 'Harika! Bildirimlerin sorunsuz çalışıyor. Bir bardak su içmeyi unutma!'
+          });
+        } else if (Notification.permission !== 'denied') {
+          Notification.requestPermission().then((perm) => {
+            if (perm === 'granted') {
+              new Notification('💧 Hidrat Su Hatırlatıcısı', {
+                body: 'Bildirim izni verildi! Su içmeyi unutma!'
+              });
+            }
+          });
+        }
+      }
+      showToast('💧 Test bildirimi gönderildi!');
+    }
+
+    function editName() {
+      const yeni = prompt('İsminizi girin:', state.kullaniciAdi);
+      if (yeni && yeni.trim()) {
+        state.kullaniciAdi = yeni.trim();
+        kaydet();
+        arayuzuGuncelle();
+      }
+    }
+
+    function editWeight() {
+      const yeni = parseInt(prompt('Kilonuzu girin (20 - 300 kg):', state.kilo), 10);
+      if (yeni && yeni >= 20 && yeni <= 300) {
+        state.kilo = yeni;
+        state.gunlukHedef = Math.min(10000, Math.max(500, yeni * 35));
+        seriHesapla();
+        kaydet();
+        arayuzuGuncelle();
+        showToast(`Kilo ve önerilen hedef (${state.gunlukHedef} ml) güncellendi`);
+      }
+    }
+
+    function editGoal() {
+      const yeni = parseInt(prompt('Günlük su hedefiniz (500 - 10000 ml):', state.gunlukHedef), 10);
+      if (yeni && yeni >= 500 && yeni <= 10000) {
+        state.gunlukHedef = yeni;
+        seriHesapla();
+        kaydet();
+        arayuzuGuncelle();
+      }
+    }
+
+    function editCupSize() {
+      const yeni = parseInt(prompt('Varsayılan bardak boyutu (50 - 2000 ml):', state.bardakBoyutu), 10);
+      if (yeni && yeni >= 50 && yeni <= 2000) {
+        state.bardakBoyutu = yeni;
+        kaydet();
+        arayuzuGuncelle();
+      }
+    }
+
+    function resetAllData() {
+      if (confirm('Tüm su takip verileriniz silinecek. Emin misiniz?')) {
+        state.suGecmisi = {};
+        state.enIyiSeri = 0;
+        state.sonEklenenMiktar = null;
+        kaydet();
+        arayuzuGuncelle();
+        showToast('Tüm veriler sıfırlandı');
+      }
+    }
+
+    // Canlı Su Dalgası Canvas Animasyonu
+    const canvas = document.getElementById('waterCanvas');
+    const ctx = canvas.getContext('2d');
+    let wavePhase = 0;
+
+    function drawWaterGauge() {
+      const w = canvas.width;
+      const h = canvas.height;
+      const cx = w / 2;
+      const cy = h / 2;
+      const r = Math.min(w, h) / 2 - 16;
+
+      ctx.clearRect(0, 0, w, h);
+
+      // Arka plan daire
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.fillStyle = '#E3F2FD';
+      ctx.fill();
+
+      const seciliIcilen = state.suGecmisi[state.seciliTarih] || 0;
+      const oran = Math.min(1, Math.max(0, seciliIcilen / Math.max(1, state.gunlukHedef)));
+
+      if (oran > 0) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.clip();
+
+        const suYukseklik = Math.max(8, r * 2 * oran);
+        const suUstY = cy + r - suYukseklik;
+
+        const grad = ctx.createLinearGradient(0, suUstY, 0, cy + r);
+        grad.addColorStop(0, '#64B5F6');
+        grad.addColorStop(1, '#1976D2');
+
+        // Ana dalga
+        ctx.beginPath();
+        ctx.moveTo(cx - r, suUstY);
+        for (let x = cx - r; x <= cx + r; x += 4) {
+          const y = suUstY + Math.sin(x * 0.025 + wavePhase) * 7;
+          ctx.lineTo(x, y);
+        }
+        ctx.lineTo(cx + r, cy + r);
+        ctx.lineTo(cx - r, cy + r);
+        ctx.closePath();
+        ctx.fillStyle = grad;
+        ctx.fill();
+
+        // İkinci dalga
+        ctx.beginPath();
+        ctx.moveTo(cx - r, suUstY);
+        for (let x = cx - r; x <= cx + r; x += 4) {
+          const y = suUstY + Math.cos(x * 0.025 - wavePhase) * 9;
+          ctx.lineTo(x, y);
+        }
+        ctx.lineTo(cx + r, cy + r);
+        ctx.lineTo(cx - r, cy + r);
+        ctx.closePath();
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.28)';
+        ctx.fill();
+
+        ctx.restore();
+      }
+
+      // Dış Çerçeve
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.lineWidth = 6;
+      ctx.strokeStyle = '#2196F3';
+      ctx.stroke();
+
+      wavePhase += 0.06;
+      requestAnimationFrame(drawWaterGauge);
+    }
+
+    yukle();
+    requestAnimationFrame(drawWaterGauge);
+  </script>
+</body>
+</html>
