@@ -5,6 +5,9 @@ on:
     branches: [ "main", "master" ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build-apk:
     runs-on: ubuntu-latest
@@ -24,31 +27,15 @@ jobs:
           flutter-version: '3.24.5'
           channel: 'stable'
 
-      - name: Proje Yapisini ve Klasorleri Otomatik Duzelt
+      - name: Proje Yapisini ve Tum Uygulama Kodlarini Olustur
         run: |
-          # Eger dosyalar alt klasor olarak yuklendiyse ana dizine tasi
-          if [ -f "hidrat_app/pubspec.yaml" ] && [ ! -f "pubspec.yaml" ]; then
-            cp -r hidrat_app/* .
-          fi
-
-          # Eksik asset klasorlerini olustur
-          mkdir -p assets/images assets/sounds
-          touch assets/images/placeholder.png assets/sounds/placeholder.mp3
-
-          # Eger .txt uzantili dosyalar kaldiysa .dart'a cevir
-          for f in $(find lib -name "*.txt" 2>/dev/null); do
-            mv "$f" "${f%.txt}.dart"
-          done
-
-          # Flutter surum uyumlulugu icin withValues -> withOpacity duzeltmesi
-          find lib -name "*.dart" -exec sed -i 's/\.withValues(alpha: \([0-9.]*\))/\.withOpacity(\1)/g' {} +
-          find lib -name "*.dart" -exec sed -i 's/activeThumbColor:/activeColor:/g' {} +
-
-          # Temiz Android/iOS platform dosyalarini olustur
           rm -rf android ios
           flutter create --org com.hidrat.app --project-name hidrat .
 
-          # pubspec.yaml icindeki paketleri AGP 8 uyumlu surumlere guncelle
+          mkdir -p assets/images assets/sounds
+          mkdir -p lib/providers lib/services lib/screens lib/widgets
+          touch assets/images/placeholder.png assets/sounds/placeholder.mp3
+
           cat > pubspec.yaml << 'EOF'
           name: hidrat
           description: Su Icme Hatirlaticisi - Gunluk su takip uygulamasi
@@ -81,7 +68,1640 @@ jobs:
               - assets/sounds/
           EOF
 
-          # AndroidManifest.xml icine AdMob Test App ID ve Bildirim izinlerini ekle
+          cat > lib/main.dart << 'EOF'
+          import 'dart:io';
+          import 'package:flutter/foundation.dart';
+          import 'package:flutter/material.dart';
+          import 'package:provider/provider.dart';
+          import 'package:google_mobile_ads/google_mobile_ads.dart';
+          import 'providers/su_takip_provider.dart';
+          import 'services/bildirim_servisi.dart';
+          import 'screens/home_page.dart';
+          import 'screens/ayarlar_page.dart';
+          import 'screens/istatistik_page.dart';
+          import 'screens/hatirlatici_page.dart';
+
+          Future<void> main() async {
+            WidgetsFlutterBinding.ensureInitialized();
+            if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
+              try {
+                await MobileAds.instance.initialize();
+              } catch (e) {
+                debugPrint('AdMob baslatilamadi: $e');
+              }
+            }
+            await BildirimServisi().baslat();
+            runApp(const HidratApp());
+          }
+
+          class HidratApp extends StatelessWidget {
+            const HidratApp({super.key});
+
+            @override
+            Widget build(BuildContext context) {
+              return ChangeNotifierProvider(
+                create: (_) => SuTakipProvider()..yukle(),
+                child: MaterialApp(
+                  title: 'Hidrat',
+                  debugShowCheckedModeBanner: false,
+                  theme: ThemeData(
+                    colorScheme: ColorScheme.fromSeed(
+                      seedColor: const Color(0xFF2196F3),
+                      brightness: Brightness.light,
+                    ),
+                    appBarTheme: const AppBarTheme(
+                      centerTitle: true,
+                      elevation: 0,
+                      backgroundColor: Color(0xFF2196F3),
+                      foregroundColor: Colors.white,
+                    ),
+                    useMaterial3: true,
+                    fontFamily: 'Roboto',
+                  ),
+                  home: const AnaEkran(),
+                ),
+              );
+            }
+          }
+
+          class AnaEkran extends StatefulWidget {
+            const AnaEkran({super.key});
+
+            @override
+            State<AnaEkran> createState() => _AnaEkranState();
+          }
+
+          class _AnaEkranState extends State<AnaEkran> {
+            int _aktifSekme = 0;
+
+            final List<Widget> _sayfalar = const [
+              HomePage(),
+              IstatistikPage(),
+              HatirlaticiPage(),
+              AyarlarPage(),
+            ];
+
+            @override
+            Widget build(BuildContext context) {
+              return Scaffold(
+                body: IndexedStack(
+                  index: _aktifSekme,
+                  children: _sayfalar,
+                ),
+                bottomNavigationBar: NavigationBar(
+                  selectedIndex: _aktifSekme,
+                  onDestinationSelected: (index) {
+                    setState(() => _aktifSekme = index);
+                  },
+                  destinations: const [
+                    NavigationDestination(
+                      icon: Icon(Icons.water_drop_outlined),
+                      selectedIcon: Icon(Icons.water_drop),
+                      label: 'Ana Sayfa',
+                    ),
+                    NavigationDestination(
+                      icon: Icon(Icons.bar_chart_outlined),
+                      selectedIcon: Icon(Icons.bar_chart),
+                      label: 'İstatistik',
+                    ),
+                    NavigationDestination(
+                      icon: Icon(Icons.alarm_outlined),
+                      selectedIcon: Icon(Icons.alarm),
+                      label: 'Hatırlatıcı',
+                    ),
+                    NavigationDestination(
+                      icon: Icon(Icons.settings_outlined),
+                      selectedIcon: Icon(Icons.settings),
+                      label: 'Ayarlar',
+                    ),
+                  ],
+                ),
+              );
+            }
+          }
+          EOF
+
+          cat > lib/services/bildirim_servisi.dart << 'EOF'
+          import 'dart:async';
+          import 'dart:io';
+          import 'package:flutter/foundation.dart';
+          import 'package:flutter/material.dart';
+          import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+
+          class BildirimServisi {
+            static final BildirimServisi _instance = BildirimServisi._internal();
+            factory BildirimServisi() => _instance;
+            BildirimServisi._internal();
+
+            final FlutterLocalNotificationsPlugin _plugin = FlutterLocalNotificationsPlugin();
+            bool _baslatildi = false;
+            Timer? _periyodikTimer;
+
+            Future<void> baslat() async {
+              if (_baslatildi || kIsWeb) return;
+              try {
+                const androidAyar = AndroidInitializationSettings('@mipmap/ic_launcher');
+                const iosAyar = DarwinInitializationSettings(
+                  requestAlertPermission: true,
+                  requestBadgePermission: true,
+                  requestSoundPermission: true,
+                );
+                const linuxAyar = LinuxInitializationSettings(defaultActionName: 'Uygulamayi Ac');
+                const initAyar = InitializationSettings(
+                  android: androidAyar,
+                  iOS: iosAyar,
+                  macOS: iosAyar,
+                  linux: linuxAyar,
+                );
+                await _plugin.initialize(initAyar);
+                if (!kIsWeb && Platform.isAndroid) {
+                  final androidPlugin = _plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+                  await androidPlugin?.requestNotificationsPermission();
+                }
+                _baslatildi = true;
+              } catch (e) {
+                debugPrint('Bildirim servisi baslatilamadi: $e');
+              }
+            }
+
+            bool sessizSaatteMi(TimeOfDay baslangic, TimeOfDay bitis) {
+              final simdi = TimeOfDay.now();
+              final simdiDakika = simdi.hour * 60 + simdi.minute;
+              final basDakika = baslangic.hour * 60 + baslangic.minute;
+              final bitDakika = bitis.hour * 60 + bitis.minute;
+              if (basDakika <= bitDakika) {
+                return simdiDakika >= basDakika && simdiDakika < bitDakika;
+              } else {
+                return simdiDakika >= basDakika || simdiDakika < bitDakika;
+              }
+            }
+
+            Future<void> hatirlaticilariAyarla({
+              required bool acik,
+              required int siklikDakika,
+              required TimeOfDay sessizBaslangic,
+              required TimeOfDay sessizBitis,
+            }) async {
+              _periyodikTimer?.cancel();
+              if (!kIsWeb && _baslatildi) {
+                try {
+                  await _plugin.cancelAll();
+                } catch (_) {}
+              }
+              if (!acik) return;
+              _periyodikTimer = Timer.periodic(
+                Duration(minutes: siklikDakika.clamp(15, 240)),
+                (_) async {
+                  if (!sessizSaatteMi(sessizBaslangic, sessizBitis)) {
+                    await anlikBildirimGoster(
+                      baslik: '💧 Su İçme Zamanı!',
+                      icerik: 'Vücudunu susuz bırakma, bir bardak su içmeyi unutma!',
+                    );
+                  }
+                },
+              );
+              if (!kIsWeb && _baslatildi && (Platform.isAndroid || Platform.isIOS)) {
+                try {
+                  const detaylar = NotificationDetails(
+                    android: AndroidNotificationDetails(
+                      'hidrat_hatirlatici_kanal',
+                      'Su Hatırlatıcıları',
+                      channelDescription: 'Düzenli su içme hatırlatma bildirimleri',
+                      importance: Importance.high,
+                      priority: Priority.high,
+                    ),
+                    iOS: DarwinNotificationDetails(),
+                  );
+                  if (siklikDakika == 60) {
+                    await _plugin.periodicallyShow(
+                      100,
+                      '💧 Su İçme Zamanı!',
+                      'Günlük su hedefine ulaşmak için bir bardak su iç!',
+                      RepeatInterval.hourly,
+                      detaylar,
+                      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+                    );
+                  }
+                } catch (e) {
+                  debugPrint('Periyodik bildirim kurulamadi: $e');
+                }
+              }
+            }
+
+            Future<bool> anlikBildirimGoster({
+              required String baslik,
+              required String icerik,
+            }) async {
+              if (kIsWeb) return false;
+              if (!_baslatildi) await baslat();
+              if (!_baslatildi) return false;
+              try {
+                const detaylar = NotificationDetails(
+                  android: AndroidNotificationDetails(
+                    'hidrat_hatirlatici_kanal',
+                    'Su Hatırlatıcıları',
+                    channelDescription: 'Düzenli su içme hatırlatma bildirimleri',
+                    importance: Importance.high,
+                    priority: Priority.high,
+                  ),
+                  iOS: DarwinNotificationDetails(),
+                );
+                await _plugin.show(
+                  DateTime.now().millisecondsSinceEpoch ~/ 1000,
+                  baslik,
+                  icerik,
+                  detaylar,
+                );
+                return true;
+              } catch (e) {
+                debugPrint('Bildirim gonderilemedi: $e');
+                return false;
+              }
+            }
+          }
+          EOF
+
+          cat > lib/providers/su_takip_provider.dart << 'EOF'
+          import 'dart:convert';
+          import 'dart:math';
+          import 'package:flutter/material.dart';
+          import 'package:shared_preferences/shared_preferences.dart';
+          import '../services/bildirim_servisi.dart';
+
+          class GunlukSuVerisi {
+            final DateTime tarih;
+            final String kisaGunAdi;
+            final double miktar;
+            final bool bugunMu;
+
+            const GunlukSuVerisi({
+              required this.tarih,
+              required this.kisaGunAdi,
+              required this.miktar,
+              required this.bugunMu,
+            });
+          }
+
+          class SuTakipProvider extends ChangeNotifier {
+            String kullaniciAdi = 'Kullanıcı';
+            int kilo = 70;
+            int gunlukHedef = 2500;
+            int bardakBoyutu = 250;
+
+            Map<String, int> suGecmisi = {};
+            DateTime seciliTarih = DateTime.now();
+            int? _sonEklenenMiktar;
+
+            bool hatirlaticiAcik = true;
+            int hatirlatmaSikligi = 60;
+            TimeOfDay sessizBaslangic = const TimeOfDay(hour: 22, minute: 0);
+            TimeOfDay sessizBitis = const TimeOfDay(hour: 8, minute: 0);
+
+            int enIyiSeri = 0;
+
+            int get seciliGunIcilen => suGecmisi[_tarihKey(seciliTarih)] ?? 0;
+            int get bugunIcilen => suGecmisi[_tarihKey(DateTime.now())] ?? 0;
+            int? get sonEklenenMiktar => _sonEklenenMiktar;
+
+            bool get seciliTarihBugunMu => _tarihKey(seciliTarih) == _tarihKey(DateTime.now());
+
+            String get seciliTarihFormatli {
+              if (seciliTarihBugunMu) return 'Bugün';
+              final dun = DateTime.now().subtract(const Duration(days: 1));
+              if (_tarihKey(seciliTarih) == _tarihKey(dun)) return 'Dün';
+              return '${seciliTarih.day.toString().padLeft(2, '0')}.${seciliTarih.month.toString().padLeft(2, '0')}.${seciliTarih.year}';
+            }
+
+            static const List<String> _haftaGunleri = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
+
+            List<GunlukSuVerisi> get haftalikDetayliVeri {
+              final bugun = DateTime.now();
+              return List.generate(7, (i) {
+                final gun = DateTime(bugun.year, bugun.month, bugun.day).subtract(Duration(days: 6 - i));
+                final gunAdi = _haftaGunleri[gun.weekday - 1];
+                final miktar = (suGecmisi[_tarihKey(gun)] ?? 0).toDouble();
+                return GunlukSuVerisi(
+                  tarih: gun,
+                  kisaGunAdi: gunAdi,
+                  miktar: miktar,
+                  bugunMu: i == 6,
+                );
+              });
+            }
+
+            List<double> get haftalikVeri => haftalikDetayliVeri.map((g) => g.miktar).toList();
+
+            int get toplamIcilen => suGecmisi.values.fold(0, (a, b) => a + b);
+
+            double get gunlukOrtalama {
+              final aktifGunler = suGecmisi.values.where((v) => v > 0).length;
+              if (aktifGunler == 0) return 0;
+              return toplamIcilen / aktifGunler;
+            }
+
+            int get mevcutSeri {
+              final bugun = DateTime.now();
+              int seri = 0;
+              DateTime kontrolGunu = DateTime(bugun.year, bugun.month, bugun.day);
+              if ((suGecmisi[_tarihKey(kontrolGunu)] ?? 0) < gunlukHedef) {
+                kontrolGunu = kontrolGunu.subtract(const Duration(days: 1));
+              }
+              while ((suGecmisi[_tarihKey(kontrolGunu)] ?? 0) >= gunlukHedef) {
+                seri++;
+                kontrolGunu = kontrolGunu.subtract(const Duration(days: 1));
+              }
+              return seri;
+            }
+
+            String _tarihKey(DateTime tarih) =>
+                '${tarih.year}-${tarih.month.toString().padLeft(2, '0')}-${tarih.day.toString().padLeft(2, '0')}';
+
+            void _seriHesapla() {
+              if (suGecmisi.isEmpty || gunlukHedef <= 0) return;
+              final basariliTarihler = suGecmisi.entries
+                  .where((e) => e.value >= gunlukHedef)
+                  .map((e) => DateTime.tryParse(e.key))
+                  .whereType<DateTime>()
+                  .map((d) => DateTime(d.year, d.month, d.day))
+                  .toList()
+                ..sort();
+
+              int maksSeri = 0;
+              int anlikSeri = 0;
+              DateTime? oncekiGun;
+
+              for (final gun in basariliTarihler) {
+                if (oncekiGun == null) {
+                  anlikSeri = 1;
+                } else {
+                  final fark = gun.difference(oncekiGun).inDays;
+                  if (fark == 1) {
+                    anlikSeri++;
+                  } else if (fark > 1) {
+                    anlikSeri = 1;
+                  }
+                }
+                if (anlikSeri > maksSeri) maksSeri = anlikSeri;
+                oncekiGun = gun;
+              }
+              if (maksSeri > enIyiSeri) enIyiSeri = maksSeri;
+            }
+
+            void suEkle(int ml) {
+              if (ml <= 0) return;
+              final key = _tarihKey(seciliTarih);
+              suGecmisi[key] = (suGecmisi[key] ?? 0) + ml;
+              _sonEklenenMiktar = ml;
+              _seriHesapla();
+              notifyListeners();
+              _kaydet();
+            }
+
+            void suAzalt(int ml) {
+              if (ml <= 0) return;
+              final key = _tarihKey(seciliTarih);
+              final mevcut = suGecmisi[key] ?? 0;
+              final yeniDeger = max(0, mevcut - ml);
+              if (yeniDeger == 0) {
+                suGecmisi.remove(key);
+              } else {
+                suGecmisi[key] = yeniDeger;
+              }
+              _sonEklenenMiktar = null;
+              _seriHesapla();
+              notifyListeners();
+              _kaydet();
+            }
+
+            void tarihDegistir(DateTime tarih) {
+              seciliTarih = DateTime(tarih.year, tarih.month, tarih.day);
+              _sonEklenenMiktar = null;
+              notifyListeners();
+            }
+
+            void buguneDon() {
+              tarihDegistir(DateTime.now());
+            }
+
+            void kullaniciAdiGuncelle(String ad) {
+              final temizAd = ad.trim();
+              if (temizAd.isEmpty) return;
+              kullaniciAdi = temizAd;
+              notifyListeners();
+              _kaydet();
+            }
+
+            void kiloGuncelle(int yeniKilo) {
+              kilo = yeniKilo.clamp(20, 300);
+              gunlukHedef = (kilo * 35).clamp(500, 10000);
+              _seriHesapla();
+              notifyListeners();
+              _kaydet();
+            }
+
+            void hedefGuncelle(int hedef) {
+              gunlukHedef = hedef.clamp(500, 10000);
+              _seriHesapla();
+              notifyListeners();
+              _kaydet();
+            }
+
+            void bardakBoyutuGuncelle(int boyut) {
+              bardakBoyutu = boyut.clamp(50, 2000);
+              notifyListeners();
+              _kaydet();
+            }
+
+            void hatirlaticiDegistir(bool deger) {
+              hatirlaticiAcik = deger;
+              _bildirimleriSenkronizeEt();
+              notifyListeners();
+              _kaydet();
+            }
+
+            void hatirlatmaSikligiGuncelle(int dakika) {
+              hatirlatmaSikligi = dakika.clamp(15, 240);
+              _bildirimleriSenkronizeEt();
+              notifyListeners();
+              _kaydet();
+            }
+
+            void sessizBaslangicGuncelle(TimeOfDay saat) {
+              sessizBaslangic = saat;
+              _bildirimleriSenkronizeEt();
+              notifyListeners();
+              _kaydet();
+            }
+
+            void sessizBitisGuncelle(TimeOfDay saat) {
+              sessizBitis = saat;
+              _bildirimleriSenkronizeEt();
+              notifyListeners();
+              _kaydet();
+            }
+
+            void _bildirimleriSenkronizeEt() {
+              BildirimServisi().hatirlaticilariAyarla(
+                acik: hatirlaticiAcik,
+                siklikDakika: hatirlatmaSikligi,
+                sessizBaslangic: sessizBaslangic,
+                sessizBitis: sessizBitis,
+              );
+            }
+
+            void verileriSifirla() {
+              suGecmisi.clear();
+              enIyiSeri = 0;
+              _sonEklenenMiktar = null;
+              seciliTarih = DateTime.now();
+              notifyListeners();
+              _kaydet();
+            }
+
+            Future<void> yukle() async {
+              final prefs = await SharedPreferences.getInstance();
+              kullaniciAdi = prefs.getString('kullaniciAdi') ?? 'Kullanıcı';
+              kilo = (prefs.getInt('kilo') ?? 70).clamp(20, 300);
+              gunlukHedef = (prefs.getInt('gunlukHedef') ?? 2500).clamp(500, 10000);
+              bardakBoyutu = (prefs.getInt('bardakBoyutu') ?? 250).clamp(50, 2000);
+              hatirlaticiAcik = prefs.getBool('hatirlaticiAcik') ?? true;
+              hatirlatmaSikligi = (prefs.getInt('hatirlatmaSikligi') ?? 60).clamp(15, 240);
+              enIyiSeri = max(0, prefs.getInt('enIyiSeri') ?? 0);
+
+              final sessizBasStr = prefs.getString('sessizBaslangic');
+              if (sessizBasStr != null) {
+                final parts = sessizBasStr.split(':');
+                if (parts.length == 2) {
+                  sessizBaslangic = TimeOfDay(
+                    hour: int.tryParse(parts[0]) ?? 22,
+                    minute: int.tryParse(parts[1]) ?? 0,
+                  );
+                }
+              }
+              final sessizBitStr = prefs.getString('sessizBitis');
+              if (sessizBitStr != null) {
+                final parts = sessizBitStr.split(':');
+                if (parts.length == 2) {
+                  sessizBitis = TimeOfDay(
+                    hour: int.tryParse(parts[0]) ?? 8,
+                    minute: int.tryParse(parts[1]) ?? 0,
+                  );
+                }
+              }
+
+              final gecmisStr = prefs.getString('suGecmisi');
+              if (gecmisStr != null) {
+                try {
+                  final decoded = json.decode(gecmisStr) as Map<String, dynamic>;
+                  suGecmisi = decoded.map((k, v) => MapEntry(k, (v as num).toInt()));
+                } catch (_) {}
+              }
+
+              _seriHesapla();
+              _bildirimleriSenkronizeEt();
+              notifyListeners();
+            }
+            Future<void> _kaydet() async {
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.setString('kullaniciAdi', kullaniciAdi);
+              await prefs.setInt('kilo', kilo);
+              await prefs.setInt('gunlukHedef', gunlukHedef);
+              await prefs.setInt('bardakBoyutu', bardakBoyutu);
+              await prefs.setBool('hatirlaticiAcik', hatirlaticiAcik);
+              await prefs.setInt('hatirlatmaSikligi', hatirlatmaSikligi);
+              await prefs.setInt('enIyiSeri', enIyiSeri);
+              await prefs.setString('sessizBaslangic', '${sessizBaslangic.hour}:${sessizBaslangic.minute}');
+              await prefs.setString('sessizBitis', '${sessizBitis.hour}:${sessizBitis.minute}');
+              await prefs.setString('suGecmisi', json.encode(suGecmisi));
+            }
+          }
+          EOF
+
+          cat > lib/widgets/su_seviyesi_gostergesi.dart << 'EOF'
+          import 'dart:math';
+          import 'package:flutter/material.dart';
+
+          class SuSeviyesiGostergesi extends StatefulWidget {
+            final int icilen;
+            final int hedef;
+
+            const SuSeviyesiGostergesi({
+              super.key,
+              required this.icilen,
+              required this.hedef,
+            });
+
+            @override
+            State<SuSeviyesiGostergesi> createState() => _SuSeviyesiGostergesiState();
+          }
+
+          class _SuSeviyesiGostergesiState extends State<SuSeviyesiGostergesi>
+              with SingleTickerProviderStateMixin {
+            late final AnimationController _dalgaController;
+
+            @override
+            void initState() {
+              super.initState();
+              _dalgaController = AnimationController(
+                vsync: this,
+                duration: const Duration(seconds: 2),
+              )..repeat();
+            }
+
+            @override
+            void dispose() {
+              _dalgaController.dispose();
+              super.dispose();
+            }
+
+            @override
+            Widget build(BuildContext context) {
+              final guvenliHedef = max(1, widget.hedef);
+              final hamYuzde = (widget.icilen / guvenliHedef * 100);
+              final dolulukOrani = (widget.icilen / guvenliHedef).clamp(0.0, 1.0);
+              final tamamlandiMi = widget.icilen >= guvenliHedef;
+
+              return Column(
+                children: [
+                  SizedBox(
+                    width: 200,
+                    height: 210,
+                    child: AnimatedBuilder(
+                      animation: _dalgaController,
+                      builder: (context, _) {
+                        return CustomPaint(
+                          painter: _SuDamlasiPainter(
+                            dolulukOrani: dolulukOrani,
+                            dalgaFazi: _dalgaController.value * 2 * pi,
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '%${hamYuzde.toStringAsFixed(0)}',
+                    style: TextStyle(
+                      fontSize: 44,
+                      fontWeight: FontWeight.bold,
+                      color: tamamlandiMi ? Colors.green : const Color(0xFF2196F3),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${widget.icilen} / ${widget.hedef} ml',
+                    style: const TextStyle(fontSize: 18, color: Colors.grey),
+                  ),
+                  if (tamamlandiMi) ...[
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.green,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.emoji_events, color: Colors.white),
+                          SizedBox(width: 8),
+                          Text(
+                            'Hedef Tamamlandı!',
+                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
+              );
+            }
+          }
+
+          class _SuDamlasiPainter extends CustomPainter {
+            final double dolulukOrani;
+            final double dalgaFazi;
+
+            _SuDamlasiPainter({required this.dolulukOrani, required this.dalgaFazi});
+
+            @override
+            void paint(Canvas canvas, Size size) {
+              final centerX = size.width / 2;
+              final centerY = size.height / 2;
+              final radius = min(size.width, size.height) / 2 - 10;
+
+              final arkaplanPaint = Paint()
+                ..color = const Color(0xFFE3F2FD)
+                ..style = PaintingStyle.fill;
+              canvas.drawCircle(Offset(centerX, centerY), radius, arkaplanPaint);
+
+              if (dolulukOrani > 0) {
+                final suYuksekligi = max(4.0, radius * 2 * dolulukOrani);
+                final suUstY = centerY + radius - suYuksekligi;
+                final suRect = Rect.fromLTWH(centerX - radius, suUstY, radius * 2, suYuksekligi);
+
+                final suPaint = Paint()
+                  ..shader = const LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Color(0xFF64B5F6), Color(0xFF1976D2)],
+                  ).createShader(suRect);
+
+                canvas.save();
+                canvas.clipPath(
+                  Path()..addOval(Rect.fromCircle(center: Offset(centerX, centerY), radius: radius)),
+                );
+
+                final suPath = Path();
+                suPath.moveTo(centerX - radius, suUstY);
+                for (double x = centerX - radius; x <= centerX + radius; x += 2) {
+                  final y = suUstY + sin((x * 0.04) + dalgaFazi) * 4;
+                  suPath.lineTo(x, y);
+                }
+                suPath.lineTo(centerX + radius, centerY + radius);
+                suPath.lineTo(centerX - radius, centerY + radius);
+                suPath.close();
+                canvas.drawPath(suPath, suPaint);
+
+                final dalgaPaint = Paint()
+                  ..color = Colors.white.withOpacity(0.28)
+                  ..style = PaintingStyle.fill;
+                final dalgaPath = Path();
+                dalgaPath.moveTo(centerX - radius, suUstY);
+                for (double x = centerX - radius; x <= centerX + radius; x += 2) {
+                  final y = suUstY + cos((x * 0.04) - dalgaFazi) * 5;
+                  dalgaPath.lineTo(x, y);
+                }
+                dalgaPath.lineTo(centerX + radius, centerY + radius);
+                dalgaPath.lineTo(centerX - radius, centerY + radius);
+                dalgaPath.close();
+                canvas.drawPath(dalgaPath, dalgaPaint);
+
+                canvas.restore();
+              }
+
+              final kenarlikPaint = Paint()
+                ..color = const Color(0xFF2196F3)
+                ..style = PaintingStyle.stroke
+                ..strokeWidth = 3;
+              canvas.drawCircle(Offset(centerX, centerY), radius, kenarlikPaint);
+
+              final damlaPath = Path();
+              damlaPath.moveTo(centerX, centerY - radius + 24);
+              damlaPath.quadraticBezierTo(centerX - 20, centerY - 5, centerX, centerY + 15);
+              damlaPath.quadraticBezierTo(centerX + 20, centerY - 5, centerX, centerY - radius + 24);
+              canvas.drawPath(
+                damlaPath,
+                Paint()
+                  ..color = Colors.white.withOpacity(0.5)
+                  ..style = PaintingStyle.fill,
+              );
+            }
+
+            @override
+            bool shouldRepaint(covariant _SuDamlasiPainter oldDelegate) =>
+                oldDelegate.dolulukOrani != dolulukOrani || oldDelegate.dalgaFazi != dalgaFazi;
+          }
+          EOF
+
+          cat > lib/widgets/bardak_secimi.dart << 'EOF'
+          import 'package:flutter/material.dart';
+
+          class BardakSecimi extends StatefulWidget {
+            final int varsayilanBardakMl;
+            final int seciliGunIcilen;
+            final int? sonEklenenMiktar;
+            final Function(int ml) onEkle;
+            final Function(int ml) onAzalt;
+
+            const BardakSecimi({
+              super.key,
+              required this.varsayilanBardakMl,
+              required this.seciliGunIcilen,
+              this.sonEklenenMiktar,
+              required this.onEkle,
+              required this.onAzalt,
+            });
+
+            @override
+            State<BardakSecimi> createState() => _BardakSecimiState();
+          }
+
+          class _BardakSecimiState extends State<BardakSecimi> {
+            final TextEditingController _ozelMiktarController = TextEditingController();
+
+            @override
+            void dispose() {
+              _ozelMiktarController.dispose();
+              super.dispose();
+            }
+
+            void _ozelMiktarGonder() {
+              final ml = int.tryParse(_ozelMiktarController.text.trim());
+              if (ml != null && ml > 0 && ml <= 5000) {
+                widget.onEkle(ml);
+                _ozelMiktarController.clear();
+                FocusScope.of(context).unfocus();
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Lütfen 1 ile 5000 ml arasında geçerli bir miktar girin.'),
+                    duration: Duration(seconds: 2),
+                  ),
+                );
+              }
+            }
+
+            @override
+            Widget build(BuildContext context) {
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Hızlı Ekle 💧',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF2196F3),
+                          ),
+                        ),
+                        if (widget.seciliGunIcilen > 0)
+                          TextButton.icon(
+                            onPressed: () {
+                              final azaltilacak = widget.sonEklenenMiktar ?? widget.varsayilanBardakMl;
+                              widget.onAzalt(azaltilacak);
+                            },
+                            icon: const Icon(Icons.undo, size: 18, color: Colors.redAccent),
+                            label: Text(
+                              '-${widget.sonEklenenMiktar ?? widget.varsayilanBardakMl} ml Geri Al',
+                              style: const TextStyle(color: Colors.redAccent),
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        _bardakButonu('🥛', 'Bardak\n(Özel)', widget.varsayilanBardakMl, const Color(0xFF64B5F6)),
+                        _bardakButonu('🥤', 'Büyük\nBardak', 330, const Color(0xFF42A5F5)),
+                        _bardakButonu('🍶', 'Küçük\nŞişe', 500, const Color(0xFF2196F3)),
+                        _bardakButonu('🫗', 'Sürahi', 1000, const Color(0xFF1E88E5)),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _ozelMiktarController,
+                            keyboardType: TextInputType.number,
+                            onSubmitted: (_) => _ozelMiktarGonder(),
+                            decoration: InputDecoration(
+                              hintText: 'Özel miktar (ml)',
+                              prefixIcon: const Icon(Icons.edit, color: Color(0xFF2196F3)),
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: const BorderSide(color: Color(0xFF2196F3), width: 2),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        ElevatedButton(
+                          onPressed: _ozelMiktarGonder,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF2196F3),
+                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                          child: const Text('Ekle', style: TextStyle(color: Colors.white, fontSize: 16)),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              );
+            }
+
+            Widget _bardakButonu(String emoji, String label, int ml, Color renk) {
+              return InkWell(
+                borderRadius: BorderRadius.circular(20),
+                onTap: () => widget.onEkle(ml),
+                child: Padding(
+                  padding: const EdgeInsets.all(4.0),
+                  child: Column(
+                    children: [
+                      Container(
+                        width: 68,
+                        height: 68,
+                        decoration: BoxDecoration(
+                          color: renk.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: renk, width: 2),
+                        ),
+                        child: Center(
+                          child: Text(emoji, style: const TextStyle(fontSize: 28)),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(label, textAlign: TextAlign.center, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
+                      Text('$ml ml', style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+                    ],
+                  ),
+                ),
+              );
+            }
+          }
+          EOF
+
+          cat > lib/widgets/reklam_banner.dart << 'EOF'
+          import 'dart:io';
+          import 'package:flutter/foundation.dart';
+          import 'package:flutter/material.dart';
+          import 'package:google_mobile_ads/google_mobile_ads.dart';
+
+          class ReklamBanner extends StatefulWidget {
+            const ReklamBanner({super.key});
+
+            @override
+            State<ReklamBanner> createState() => _ReklamBannerState();
+          }
+
+          class _ReklamBannerState extends State<ReklamBanner> {
+            BannerAd? _bannerAd;
+            bool _isLoaded = false;
+
+            bool get _reklamDestekleniyor => !kIsWeb && (Platform.isAndroid || Platform.isIOS);
+
+            String get _adUnitId {
+              if (!kIsWeb && Platform.isIOS) {
+                return 'ca-app-pub-3940256099942544/2934735716';
+              }
+              return 'ca-app-pub-3940256099942544/6300978111';
+            }
+
+            @override
+            void initState() {
+              super.initState();
+              if (_reklamDestekleniyor) _loadAd();
+            }
+
+            void _loadAd() {
+              _bannerAd = BannerAd(
+                adUnitId: _adUnitId,
+                size: AdSize.banner,
+                request: const AdRequest(),
+                listener: BannerAdListener(
+                  onAdLoaded: (_) {
+                    if (mounted) setState(() => _isLoaded = true);
+                  },
+                  onAdFailedToLoad: (ad, error) {
+                    ad.dispose();
+                    if (mounted) setState(() => _isLoaded = false);
+                  },
+                ),
+              )..load();
+            }
+
+            @override
+            void dispose() {
+              _bannerAd?.dispose();
+              super.dispose();
+            }
+
+            @override
+            Widget build(BuildContext context) {
+              if (!_reklamDestekleniyor) return const SizedBox.shrink();
+              return _isLoaded && _bannerAd != null
+                  ? Container(
+                      alignment: Alignment.center,
+                      width: _bannerAd!.size.width.toDouble(),
+                      height: _bannerAd!.size.height.toDouble(),
+                      child: AdWidget(ad: _bannerAd!),
+                    )
+                  : const SizedBox(height: 50);
+            }
+          }
+          EOF
+
+          cat > lib/screens/home_page.dart << 'EOF'
+          import 'package:flutter/material.dart';
+          import 'package:provider/provider.dart';
+          import '../providers/su_takip_provider.dart';
+          import '../widgets/su_seviyesi_gostergesi.dart';
+          import '../widgets/bardak_secimi.dart';
+          import '../widgets/reklam_banner.dart';
+
+          class HomePage extends StatelessWidget {
+            const HomePage({super.key});
+
+            @override
+            Widget build(BuildContext context) {
+              final provider = context.watch<SuTakipProvider>();
+
+              return Scaffold(
+                appBar: AppBar(
+                  title: Text('💧 Merhaba, ${provider.kullaniciAdi}'),
+                  actions: [
+                    IconButton(
+                      tooltip: 'Tarih Seç',
+                      icon: const Icon(Icons.calendar_today),
+                      onPressed: () => _tarihSec(context, provider.seciliTarih),
+                    ),
+                  ],
+                ),
+                body: Column(
+                  children: [
+                    if (!provider.seciliTarihBugunMu)
+                      Container(
+                        width: double.infinity,
+                        color: const Color(0xFFE3F2FD),
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Row(
+                              children: [
+                                const Icon(Icons.history, size: 18, color: Color(0xFF1976D2)),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'Seçili Tarih: ${provider.seciliTarihFormatli}',
+                                  style: const TextStyle(fontWeight: FontWeight.w600, color: Color(0xFF1976D2)),
+                                ),
+                              ],
+                            ),
+                            TextButton(
+                              onPressed: () => context.read<SuTakipProvider>().buguneDon(),
+                              child: const Text('Bugüne Dön'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    Expanded(
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        child: Column(
+                          children: [
+                            SuSeviyesiGostergesi(
+                              icilen: provider.seciliGunIcilen,
+                              hedef: provider.gunlukHedef,
+                            ),
+                            const SizedBox(height: 24),
+                            BardakSecimi(
+                              varsayilanBardakMl: provider.bardakBoyutu,
+                              seciliGunIcilen: provider.seciliGunIcilen,
+                              sonEklenenMiktar: provider.sonEklenenMiktar,
+                              onEkle: (ml) => context.read<SuTakipProvider>().suEkle(ml),
+                              onAzalt: (ml) => context.read<SuTakipProvider>().suAzalt(ml),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const ReklamBanner(),
+                  ],
+                ),
+              );
+            }
+
+            Future<void> _tarihSec(BuildContext context, DateTime mevcutTarih) async {
+              final simdi = DateTime.now();
+              final ilkTarih = DateTime(2024);
+              final secili = mevcutTarih.isAfter(simdi) ? simdi : mevcutTarih;
+
+              final tarih = await showDatePicker(
+                context: context,
+                initialDate: secili.isBefore(ilkTarih) ? ilkTarih : secili,
+                firstDate: ilkTarih,
+                lastDate: simdi,
+              );
+              if (tarih != null && context.mounted) {
+                context.read<SuTakipProvider>().tarihDegistir(tarih);
+              }
+            }
+          }
+          EOF
+
+          cat > lib/screens/istatistik_page.dart << 'EOF'
+          import 'dart:math';
+          import 'package:flutter/material.dart';
+          import 'package:provider/provider.dart';
+          import 'package:fl_chart/fl_chart.dart';
+          import '../providers/su_takip_provider.dart';
+
+          class IstatistikPage extends StatelessWidget {
+            const IstatistikPage({super.key});
+
+            @override
+            Widget build(BuildContext context) {
+              final provider = context.watch<SuTakipProvider>();
+              final haftalikDetay = provider.haftalikDetayliVeri;
+              final enYuksekGunluk = haftalikDetay.isEmpty ? 0.0 : haftalikDetay.map((e) => e.miktar).reduce(max);
+              final grafikTavan = max(provider.gunlukHedef * 1.3, max(enYuksekGunluk * 1.2, 1000.0));
+
+              return Scaffold(
+                appBar: AppBar(title: const Text('📊 İstatistikler')),
+                body: SingleChildScrollView(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _ozetKarti(provider),
+                      const SizedBox(height: 24),
+                      const Text(
+                        '📈 Son 7 Gün',
+                        style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF2196F3)),
+                      ),
+                      const SizedBox(height: 16),
+                      SizedBox(
+                        height: 250,
+                        child: BarChart(
+                          BarChartData(
+                            alignment: BarChartAlignment.spaceAround,
+                            maxY: grafikTavan,
+                            barGroups: haftalikDetay.asMap().entries.map((entry) {
+                              final veri = entry.value;
+                              final hedefTamam = veri.miktar >= provider.gunlukHedef;
+                              return BarChartGroupData(
+                                x: entry.key,
+                                barRods: [
+                                  BarChartRodData(
+                                    toY: veri.miktar,
+                                    color: hedefTamam
+                                        ? Colors.green
+                                        : (veri.bugunMu ? const Color(0xFF1565C0) : const Color(0xFF2196F3)),
+                                    width: 22,
+                                    borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
+                                  ),
+                                ],
+                              );
+                            }).toList(),
+                            titlesData: FlTitlesData(
+                              show: true,
+                              bottomTitles: AxisTitles(
+                                sideTitles: SideTitles(
+                                  showTitles: true,
+                                  reservedSize: 32,
+                                  getTitlesWidget: (value, meta) {
+                                    final idx = value.toInt();
+                                    if (idx < 0 || idx >= haftalikDetay.length) return const SizedBox.shrink();
+                                    final veri = haftalikDetay[idx];
+                                    return Padding(
+                                      padding: const EdgeInsets.only(top: 8),
+                                      child: Text(
+                                        veri.kisaGunAdi,
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: veri.bugunMu ? FontWeight.bold : FontWeight.normal,
+                                          color: veri.bugunMu ? const Color(0xFF1565C0) : Colors.black87,
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
+                              leftTitles: AxisTitles(
+                                sideTitles: SideTitles(
+                                  showTitles: true,
+                                  reservedSize: 48,
+                                  getTitlesWidget: (value, meta) {
+                                    return Text('${value.toInt()}ml', style: const TextStyle(fontSize: 10));
+                                  },
+                                ),
+                              ),
+                              topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                              rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                            ),
+                            gridData: const FlGridData(show: true, drawVerticalLine: false),
+                            borderData: FlBorderData(show: false),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      _istatistikKarti(
+                        '🔥 Mevcut Seri / En İyi Seri',
+                        '${provider.mevcutSeri} gün (Rekor: ${provider.enIyiSeri} gün)',
+                        Icons.local_fire_department,
+                        Colors.orange,
+                      ),
+                      const SizedBox(height: 12),
+                      _istatistikKarti(
+                        '💧 Toplam İçilen',
+                        '${provider.toplamIcilen} ml',
+                        Icons.water_drop,
+                        const Color(0xFF2196F3),
+                      ),
+                      const SizedBox(height: 12),
+                      _istatistikKarti(
+                        '📅 Ortalama/Gün',
+                        '${provider.gunlukOrtalama.toStringAsFixed(0)} ml',
+                        Icons.trending_up,
+                        Colors.green,
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }
+            Widget _ozetKarti(SuTakipProvider p) {
+              final guvenliHedef = max(1, p.gunlukHedef);
+              final yuzde = (p.bugunIcilen / guvenliHedef * 100).toStringAsFixed(0);
+
+              return Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(colors: [Color(0xFF2196F3), Color(0xFF64B5F6)]),
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF2196F3).withOpacity(0.3),
+                      blurRadius: 12,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  children: [
+                    const Text('Bugün', style: TextStyle(fontSize: 18, color: Colors.white70)),
+                    const SizedBox(height: 8),
+                    Text(
+                      '${p.bugunIcilen} / ${p.gunlukHedef} ml',
+                      style: const TextStyle(fontSize: 36, fontWeight: FontWeight.bold, color: Colors.white),
+                    ),
+                    const SizedBox(height: 8),
+                    Text('%$yuzde tamamlandı', style: const TextStyle(fontSize: 16, color: Colors.white70)),
+                  ],
+                ),
+              );
+            }
+
+            Widget _istatistikKarti(String baslik, String deger, IconData icon, Color renk) {
+              return Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 8)],
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(color: renk.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
+                      child: Icon(icon, color: renk, size: 28),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(baslik, style: const TextStyle(fontSize: 14, color: Colors.grey)),
+                          Text(deger, style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: renk)),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }
+          }
+          EOF
+
+          cat > lib/screens/hatirlatici_page.dart << 'EOF'
+          import 'package:flutter/material.dart';
+          import 'package:provider/provider.dart';
+          import '../providers/su_takip_provider.dart';
+          import '../services/bildirim_servisi.dart';
+
+          class HatirlaticiPage extends StatefulWidget {
+            const HatirlaticiPage({super.key});
+
+            @override
+            State<HatirlaticiPage> createState() => _HatirlaticiPageState();
+          }
+
+          class _HatirlaticiPageState extends State<HatirlaticiPage> {
+            static const List<Map<String, dynamic>> _siklikSecenekleri = [
+              {'etiket': '30 dakikada bir', 'dakika': 30},
+              {'etiket': '1 saatte bir', 'dakika': 60},
+              {'etiket': '1.5 saatte bir', 'dakika': 90},
+              {'etiket': '2 saatte bir', 'dakika': 120},
+            ];
+
+            String _saatFormatla(TimeOfDay saat) {
+              final s = saat.hour.toString().padLeft(2, '0');
+              final d = saat.minute.toString().padLeft(2, '0');
+              return '$s:$d';
+            }
+
+            @override
+            Widget build(BuildContext context) {
+              final provider = context.watch<SuTakipProvider>();
+
+              return Scaffold(
+                appBar: AppBar(title: const Text('⏰ Hatırlatıcılar')),
+                body: ListView(
+                  padding: const EdgeInsets.all(20),
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(colors: [Color(0xFF2196F3), Color(0xFF64B5F6)]),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.notifications_active, size: 40, color: Colors.white),
+                          const SizedBox(width: 16),
+                          const Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Hatırlatıcılar', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
+                                Text('Su içmeyi unutma!', style: TextStyle(color: Colors.white70)),
+                              ],
+                            ),
+                          ),
+                          Switch(
+                            value: provider.hatirlaticiAcik,
+                            activeColor: Colors.white,
+                            onChanged: (val) => provider.hatirlaticiDegistir(val),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    const Text('Hatırlatma Sıklığı', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF2196F3))),
+                    const SizedBox(height: 12),
+                    ..._siklikSecenekleri.map((secenek) {
+                      final dakika = secenek['dakika'] as int;
+                      final etiket = secenek['etiket'] as String;
+                      final secili = provider.hatirlatmaSikligi == dakika;
+                      return Card(
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        color: secili ? const Color(0xFF2196F3).withOpacity(0.1) : null,
+                        child: ListTile(
+                          leading: Icon(
+                            secili ? Icons.check_circle : Icons.circle_outlined,
+                            color: secili ? const Color(0xFF2196F3) : Colors.grey,
+                          ),
+                          title: Text(etiket, style: TextStyle(fontWeight: secili ? FontWeight.bold : FontWeight.normal)),
+                          onTap: () => provider.hatirlatmaSikligiGuncelle(dakika),
+                        ),
+                      );
+                    }),
+                    const SizedBox(height: 24),
+                    const Text('Sessiz Saatler', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF2196F3))),
+                    const SizedBox(height: 8),
+                    Text('Bu saatler arasında bildirim gelmez', style: TextStyle(color: Colors.grey.shade600)),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _saatSec('Başlangıç', provider.sessizBaslangic, (saat) => provider.sessizBaslangicGuncelle(saat)),
+                        ),
+                        const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 8),
+                          child: Text('—', style: TextStyle(fontSize: 20)),
+                        ),
+                        Expanded(
+                          child: _saatSec('Bitiş', provider.sessizBitis, (saat) => provider.sessizBitisGuncelle(saat)),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 28),
+                    OutlinedButton.icon(
+                      onPressed: () async {
+                        final gonderildi = await BildirimServisi().anlikBildirimGoster(
+                          baslik: '💧 Hidrat Test Bildirimi',
+                          icerik: 'Harika! Su hatırlatıcı bildirimlerin sorunsuz çalışıyor.',
+                        );
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(gonderildi ? 'Test bildirimi gönderildi!' : 'Su içme zamanı! 💧 (Bildirim önizlemesi)'),
+                            ),
+                          );
+                        }
+                      },
+                      icon: const Icon(Icons.notifications_none),
+                      label: const Text('Test Bildirimi Gönder'),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }
+
+            Widget _saatSec(String label, TimeOfDay saat, Function(TimeOfDay) onSecildi) {
+              return GestureDetector(
+                onTap: () async {
+                  final secilen = await showTimePicker(context: context, initialTime: saat);
+                  if (secilen != null) onSecildi(secilen);
+                },
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: const Color(0xFF2196F3).withOpacity(0.3)),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    children: [
+                      Text(label, style: const TextStyle(color: Colors.grey)),
+                      const SizedBox(height: 4),
+                      Text(
+                        _saatFormatla(saat),
+                        style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF2196F3)),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }
+          }
+          EOF
+
+          cat > lib/screens/ayarlar_page.dart << 'EOF'
+          import 'package:flutter/material.dart';
+          import 'package:provider/provider.dart';
+          import '../providers/su_takip_provider.dart';
+
+          class AyarlarPage extends StatelessWidget {
+            const AyarlarPage({super.key});
+
+            @override
+            Widget build(BuildContext context) {
+              final provider = context.watch<SuTakipProvider>();
+
+              return Scaffold(
+                appBar: AppBar(title: const Text('⚙️ Ayarlar')),
+                body: ListView(
+                  padding: const EdgeInsets.all(20),
+                  children: [
+                    _ayarlarBolumu('👤 Profil', [
+                      ListTile(
+                        leading: const Icon(Icons.person),
+                        title: const Text('İsim'),
+                        subtitle: Text(provider.kullaniciAdi),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () => _isimDegistir(context),
+                      ),
+                      ListTile(
+                        leading: const Icon(Icons.monitor_weight),
+                        title: const Text('Kilo'),
+                        subtitle: Text('${provider.kilo} kg (Önerilen: ${provider.kilo * 35} ml)'),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () => _kiloDegistir(context),
+                      ),
+                    ]),
+                    const SizedBox(height: 16),
+                    _ayarlarBolumu('🎯 Su Hedefi', [
+                      ListTile(
+                        leading: const Icon(Icons.flag),
+                        title: const Text('Günlük Hedef'),
+                        subtitle: Text('${provider.gunlukHedef} ml'),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () => _hedefDegistir(context),
+                      ),
+                      ListTile(
+                        leading: const Icon(Icons.local_drink),
+                        title: const Text('Varsayılan Bardak Boyutu'),
+                        subtitle: Text('${provider.bardakBoyutu} ml'),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () => _bardakBoyutuDegistir(context),
+                      ),
+                    ]),
+                    const SizedBox(height: 16),
+                    _ayarlarBolumu('💾 Veri', [
+                      ListTile(
+                        leading: const Icon(Icons.delete_outline, color: Colors.red),
+                        title: const Text('Verileri Sıfırla', style: TextStyle(color: Colors.red)),
+                        onTap: () => _verileriSifirla(context),
+                      ),
+                    ]),
+                    const SizedBox(height: 32),
+                    const Center(
+                      child: Column(
+                        children: [
+                          Icon(Icons.water_drop, size: 48, color: Color(0xFF2196F3)),
+                          SizedBox(height: 8),
+                          Text('Hidrat v1.0.0', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                          Text('Su içmeyi unutma! 💧', style: TextStyle(color: Colors.grey)),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                ),
+              );
+            }
+
+            Widget _ayarlarBolumu(String baslik, List<Widget> cocuklar) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(left: 16, bottom: 8),
+                    child: Text(
+                      baslik,
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF2196F3)),
+                    ),
+                  ),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 8)],
+                    ),
+                    child: Column(children: cocuklar),
+                  ),
+                ],
+              );
+            }
+
+            Future<void> _isimDegistir(BuildContext context) async {
+              final mevcutIsim = context.read<SuTakipProvider>().kullaniciAdi;
+              final yeniIsim = await _metinGirisDialogu(
+                context: context,
+                baslik: 'İsminizi Girin',
+                ipucu: 'Adınız',
+                baslangicDegeri: mevcutIsim,
+                sayisalMi: false,
+              );
+              if (yeniIsim != null && yeniIsim.trim().isNotEmpty && context.mounted) {
+                context.read<SuTakipProvider>().kullaniciAdiGuncelle(yeniIsim);
+              }
+            }
+
+            Future<void> _kiloDegistir(BuildContext context) async {
+              final mevcutKilo = context.read<SuTakipProvider>().kilo.toString();
+              final girilen = await _metinGirisDialogu(
+                context: context,
+                baslik: 'Kilonuzu Girin (20 - 300 kg)',
+                ipucu: '70',
+                baslangicDegeri: mevcutKilo,
+                sayisalMi: true,
+              );
+              if (girilen != null && context.mounted) {
+                final kilo = int.tryParse(girilen);
+                if (kilo != null && kilo >= 20 && kilo <= 300) {
+                  context.read<SuTakipProvider>().kiloGuncelle(kilo);
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Lütfen 20 ile 300 kg arasında geçerli bir değer girin.')),
+                  );
+                }
+              }
+            }
+
+            Future<void> _hedefDegistir(BuildContext context) async {
+              final mevcutHedef = context.read<SuTakipProvider>().gunlukHedef.toString();
+              final girilen = await _metinGirisDialogu(
+                context: context,
+                baslik: 'Günlük Su Hedefi (500 - 10000 ml)',
+                ipucu: '2500',
+                baslangicDegeri: mevcutHedef,
+                sayisalMi: true,
+              );
+              if (girilen != null && context.mounted) {
+                final hedef = int.tryParse(girilen);
+                if (hedef != null && hedef >= 500 && hedef <= 10000) {
+                  context.read<SuTakipProvider>().hedefGuncelle(hedef);
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Lütfen 500 ile 10000 ml arasında bir hedef girin.')),
+                  );
+                }
+              }
+            }
+
+            Future<void> _bardakBoyutuDegistir(BuildContext context) async {
+              final mevcutBoyut = context.read<SuTakipProvider>().bardakBoyutu.toString();
+              final girilen = await _metinGirisDialogu(
+                context: context,
+                baslik: 'Bardak Boyutu (50 - 2000 ml)',
+                ipucu: '250',
+                baslangicDegeri: mevcutBoyut,
+                sayisalMi: true,
+              );
+              if (girilen != null && context.mounted) {
+                final boyut = int.tryParse(girilen);
+                if (boyut != null && boyut >= 50 && boyut <= 2000) {
+                  context.read<SuTakipProvider>().bardakBoyutuGuncelle(boyut);
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Lütfen 50 ile 2000 ml arasında bir boyut girin.')),
+                  );
+                }
+              }
+            }
+
+            Future<String?> _metinGirisDialogu({
+              required BuildContext context,
+              required String baslik,
+              required String ipucu,
+              required String baslangicDegeri,
+              required bool sayisalMi,
+            }) async {
+              final controller = TextEditingController(text: baslangicDegeri);
+              final sonuc = await showDialog<String>(
+                context: context,
+                builder: (dialogContext) => AlertDialog(
+                  title: Text(baslik),
+                  content: TextField(
+                    controller: controller,
+                    autofocus: true,
+                    keyboardType: sayisalMi ? TextInputType.number : TextInputType.text,
+                    decoration: InputDecoration(hintText: ipucu),
+                    onSubmitted: (val) => Navigator.pop(dialogContext, val),
+                  ),
+                  actions: [
+                    TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('İptal')),
+                    ElevatedButton(onPressed: () => Navigator.pop(dialogContext, controller.text), child: const Text('Kaydet')),
+                  ],
+                ),
+              );
+              controller.dispose();
+              return sonuc;
+            }
+
+            void _verileriSifirla(BuildContext context) {
+              showDialog(
+                context: context,
+                builder: (dialogContext) => AlertDialog(
+                  title: const Text('Emin misiniz?'),
+                  content: const Text('Tüm su takip verileriniz silinecek. Bu işlem geri alınamaz.'),
+                  actions: [
+                    TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('İptal')),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                      onPressed: () {
+                        context.read<SuTakipProvider>().verileriSifirla();
+                        Navigator.pop(dialogContext);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Tüm su takip verileri sıfırlandı.')),
+                        );
+                      },
+                      child: const Text('Sil', style: TextStyle(color: Colors.white)),
+                    ),
+                  ],
+                ),
+              );
+            }
+          }
+          EOF
+
           cat > android/app/src/main/AndroidManifest.xml << 'EOF'
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
               <uses-permission android:name="android.permission.INTERNET"/>
@@ -120,7 +1740,6 @@ jobs:
           </manifest>
           EOF
 
-          # android/app/build.gradle dosyasini minSdk 21 ve coreLibraryDesugaring ile yapilandir
           cat > android/app/build.gradle << 'EOF'
           plugins {
               id "com.android.application"
@@ -167,6 +1786,11 @@ jobs:
               coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.0.4'
           }
           EOF
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add lib pubspec.yaml assets android/app/src/main/AndroidManifest.xml android/app/build.gradle
+          git diff --staged --quiet || git commit -m "Update Hidrat app source files [skip ci]" && git push || true
 
       - name: Bagimliliklari Yukle
         run: flutter pub get
