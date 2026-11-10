@@ -19,27 +19,121 @@ class GunlukSuVerisi {
 }
 
 class SuTakipProvider extends ChangeNotifier {
+  // Profil & Akıllı Hedef Kriterleri
   String kullaniciAdi = 'Kullanıcı';
   int kilo = 70;
+  int yas = 30;
+  String cinsiyetDurum = 'erkek'; // erkek, kadin, hamile, emziren
+  String aktiviteDuzeyi = 'hafif'; // hareketsiz, hafif, orta, yogun
+  String havaDurumu = 'normal'; // normal, sicak, cok_sicak
+  int gunlukKafeinAdet = 2; // Günlük çay/kahve bardak/fincan sayısı (her biri +125 ml)
+  bool otomatikHedefKullan = true;
+
   int gunlukHedef = 2500;
   int bardakBoyutu = 250;
 
+  // Su Takip
   Map<String, int> suGecmisi = {};
   DateTime seciliTarih = DateTime.now();
   int? _sonEklenenMiktar;
 
+  // Hatırlatıcı
   bool hatirlaticiAcik = true;
   int hatirlatmaSikligi = 60;
   TimeOfDay sessizBaslangic = const TimeOfDay(hour: 22, minute: 0);
   TimeOfDay sessizBitis = const TimeOfDay(hour: 8, minute: 0);
 
+  // İstatistik
   int enIyiSeri = 0;
 
+  // Etiket Haritaları
+  static const Map<String, String> cinsiyetSecenekleri = {
+    'erkek': 'Erkek',
+    'kadin': 'Kadın',
+    'hamile': 'Kadın (Hamile - +300 ml)',
+    'emziren': 'Kadın (Emziren - +700 ml)',
+  };
+
+  static const Map<String, String> aktiviteSecenekleri = {
+    'hareketsiz': 'Masa Başı / Az Hareketli (+0 ml)',
+    'hafif': 'Hafif Aktif / Günlük Yürüyüş (+300 ml)',
+    'orta': 'Orta Aktif / Düzenli Egzersiz (+500 ml)',
+    'yogun': 'Çok Aktif / Yoğun Spor (+800 ml)',
+  };
+
+  static const Map<String, String> havaSecenekleri = {
+    'normal': 'Serin / Normal Hava (+0 ml)',
+    'sicak': 'Sıcak / Yaz Mevsimi (+400 ml)',
+    'cok_sicak': 'Çok Sıcak / Nemli Hava (+700 ml)',
+  };
+
+  // Akıllı Hedef Hesaplama Detayları
+  int get bazalSuIhtiyaci {
+    double mlPerKg;
+    if (yas < 30) {
+      mlPerKg = 38.0;
+    } else if (yas < 55) {
+      mlPerKg = 35.0;
+    } else {
+      mlPerKg = 30.0;
+    }
+    double bazal = kilo * mlPerKg;
+    if (cinsiyetDurum == 'erkek') {
+      bazal *= 1.08; // Erkeklerde kas kütlesi farkı (+%8)
+    }
+    return (bazal / 50).round() * 50;
+  }
+
+  int get ozelDurumEkSu {
+    if (cinsiyetDurum == 'hamile') return 300;
+    if (cinsiyetDurum == 'emziren') return 700;
+    return 0;
+  }
+
+  int get aktiviteEkSu {
+    switch (aktiviteDuzeyi) {
+      case 'hafif':
+        return 300;
+      case 'orta':
+        return 500;
+      case 'yogun':
+        return 800;
+      default:
+        return 0;
+    }
+  }
+
+  int get havaEkSu {
+    switch (havaDurumu) {
+      case 'sicak':
+        return 400;
+      case 'cok_sicak':
+        return 700;
+      default:
+        return 0;
+    }
+  }
+
+  int get kafeinEkSu => gunlukKafeinAdet * 125;
+
+  int get onerilenHedef {
+    final toplam = bazalSuIhtiyaci +
+        ozelDurumEkSu +
+        aktiviteEkSu +
+        havaEkSu +
+        kafeinEkSu;
+    // 50 ml katlarına yuvarla ve 1000-10000 ml aralığında sınırla
+    final yuvarlanmis = ((toplam / 50).round() * 50);
+    return yuvarlanmis.clamp(1000, 10000);
+  }
+
+  // Getters
   int get seciliGunIcilen => suGecmisi[_tarihKey(seciliTarih)] ?? 0;
   int get bugunIcilen => suGecmisi[_tarihKey(DateTime.now())] ?? 0;
   int? get sonEklenenMiktar => _sonEklenenMiktar;
 
-  bool get seciliTarihBugunMu => _tarihKey(seciliTarih) == _tarihKey(DateTime.now());
+  bool get seciliTarihBugunMu =>
+      _tarihKey(seciliTarih) == _tarihKey(DateTime.now());
 
   String get seciliTarihFormatli {
     if (seciliTarihBugunMu) return 'Bugün';
@@ -48,12 +142,21 @@ class SuTakipProvider extends ChangeNotifier {
     return '${seciliTarih.day.toString().padLeft(2, '0')}.${seciliTarih.month.toString().padLeft(2, '0')}.${seciliTarih.year}';
   }
 
-  static const List<String> _haftaGunleri = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
+  static const List<String> _haftaGunleri = [
+    'Pzt',
+    'Sal',
+    'Çar',
+    'Per',
+    'Cum',
+    'Cmt',
+    'Paz',
+  ];
 
   List<GunlukSuVerisi> get haftalikDetayliVeri {
     final bugun = DateTime.now();
     return List.generate(7, (i) {
-      final gun = DateTime(bugun.year, bugun.month, bugun.day).subtract(Duration(days: 6 - i));
+      final gun = DateTime(bugun.year, bugun.month, bugun.day)
+          .subtract(Duration(days: 6 - i));
       final gunAdi = _haftaGunleri[gun.weekday - 1];
       final miktar = (suGecmisi[_tarihKey(gun)] ?? 0).toDouble();
       return GunlukSuVerisi(
@@ -65,7 +168,8 @@ class SuTakipProvider extends ChangeNotifier {
     });
   }
 
-  List<double> get haftalikVeri => haftalikDetayliVeri.map((g) => g.miktar).toList();
+  List<double> get haftalikVeri =>
+      haftalikDetayliVeri.map((g) => g.miktar).toList();
 
   int get toplamIcilen => suGecmisi.values.fold(0, (a, b) => a + b);
 
@@ -79,9 +183,11 @@ class SuTakipProvider extends ChangeNotifier {
     final bugun = DateTime.now();
     int seri = 0;
     DateTime kontrolGunu = DateTime(bugun.year, bugun.month, bugun.day);
+
     if ((suGecmisi[_tarihKey(kontrolGunu)] ?? 0) < gunlukHedef) {
       kontrolGunu = kontrolGunu.subtract(const Duration(days: 1));
     }
+
     while ((suGecmisi[_tarihKey(kontrolGunu)] ?? 0) >= gunlukHedef) {
       seri++;
       kontrolGunu = kontrolGunu.subtract(const Duration(days: 1));
@@ -94,6 +200,7 @@ class SuTakipProvider extends ChangeNotifier {
 
   void _seriHesapla() {
     if (suGecmisi.isEmpty || gunlukHedef <= 0) return;
+
     final basariliTarihler = suGecmisi.entries
         .where((e) => e.value >= gunlukHedef)
         .map((e) => DateTime.tryParse(e.key))
@@ -117,12 +224,25 @@ class SuTakipProvider extends ChangeNotifier {
           anlikSeri = 1;
         }
       }
-      if (anlikSeri > maksSeri) maksSeri = anlikSeri;
+      if (anlikSeri > maksSeri) {
+        maksSeri = anlikSeri;
+      }
       oncekiGun = gun;
     }
-    if (maksSeri > enIyiSeri) enIyiSeri = maksSeri;
+
+    if (maksSeri > enIyiSeri) {
+      enIyiSeri = maksSeri;
+    }
   }
 
+  void _otomatikHedefUygula() {
+    if (otomatikHedefKullan) {
+      gunlukHedef = onerilenHedef;
+    }
+    _seriHesapla();
+  }
+
+  // Su Ekle
   void suEkle(int ml) {
     if (ml <= 0) return;
     final key = _tarihKey(seciliTarih);
@@ -133,6 +253,7 @@ class SuTakipProvider extends ChangeNotifier {
     _kaydet();
   }
 
+  // Su Azalt / Geri Al
   void suAzalt(int ml) {
     if (ml <= 0) return;
     final key = _tarihKey(seciliTarih);
@@ -159,6 +280,7 @@ class SuTakipProvider extends ChangeNotifier {
     tarihDegistir(DateTime.now());
   }
 
+  // Profil & Akıllı Hedef Güncellemeleri
   void kullaniciAdiGuncelle(String ad) {
     final temizAd = ad.trim();
     if (temizAd.isEmpty) return;
@@ -169,13 +291,64 @@ class SuTakipProvider extends ChangeNotifier {
 
   void kiloGuncelle(int yeniKilo) {
     kilo = yeniKilo.clamp(20, 300);
-    gunlukHedef = (kilo * 35).clamp(500, 10000);
-    _seriHesapla();
+    otomatikHedefKullan = true;
+    _otomatikHedefUygula();
+    notifyListeners();
+    _kaydet();
+  }
+
+  void yasGuncelle(int yeniYas) {
+    yas = yeniYas.clamp(10, 100);
+    otomatikHedefKullan = true;
+    _otomatikHedefUygula();
+    notifyListeners();
+    _kaydet();
+  }
+
+  void cinsiyetDurumGuncelle(String yeniDurum) {
+    if (!cinsiyetSecenekleri.containsKey(yeniDurum)) return;
+    cinsiyetDurum = yeniDurum;
+    otomatikHedefKullan = true;
+    _otomatikHedefUygula();
+    notifyListeners();
+    _kaydet();
+  }
+
+  void aktiviteDuzeyiGuncelle(String yeniAktivite) {
+    if (!aktiviteSecenekleri.containsKey(yeniAktivite)) return;
+    aktiviteDuzeyi = yeniAktivite;
+    otomatikHedefKullan = true;
+    _otomatikHedefUygula();
+    notifyListeners();
+    _kaydet();
+  }
+
+  void havaDurumuGuncelle(String yeniHava) {
+    if (!havaSecenekleri.containsKey(yeniHava)) return;
+    havaDurumu = yeniHava;
+    otomatikHedefKullan = true;
+    _otomatikHedefUygula();
+    notifyListeners();
+    _kaydet();
+  }
+
+  void gunlukKafeinGuncelle(int adet) {
+    gunlukKafeinAdet = adet.clamp(0, 15);
+    otomatikHedefKullan = true;
+    _otomatikHedefUygula();
+    notifyListeners();
+    _kaydet();
+  }
+
+  void onerilenHedefiAktifEt() {
+    otomatikHedefKullan = true;
+    _otomatikHedefUygula();
     notifyListeners();
     _kaydet();
   }
 
   void hedefGuncelle(int hedef) {
+    otomatikHedefKullan = false;
     gunlukHedef = hedef.clamp(500, 10000);
     _seriHesapla();
     notifyListeners();
@@ -188,6 +361,7 @@ class SuTakipProvider extends ChangeNotifier {
     _kaydet();
   }
 
+  // Hatırlatıcı Güncellemeleri
   void hatirlaticiDegistir(bool deger) {
     hatirlaticiAcik = deger;
     _bildirimleriSenkronizeEt();
@@ -234,14 +408,38 @@ class SuTakipProvider extends ChangeNotifier {
     _kaydet();
   }
 
+  // Kayıt İşlemleri
   Future<void> yukle() async {
     final prefs = await SharedPreferences.getInstance();
     kullaniciAdi = prefs.getString('kullaniciAdi') ?? 'Kullanıcı';
     kilo = (prefs.getInt('kilo') ?? 70).clamp(20, 300);
-    gunlukHedef = (prefs.getInt('gunlukHedef') ?? 2500).clamp(500, 10000);
+    yas = (prefs.getInt('yas') ?? 30).clamp(10, 100);
+    cinsiyetDurum = prefs.getString('cinsiyetDurum') ?? 'erkek';
+    if (!cinsiyetSecenekleri.containsKey(cinsiyetDurum)) {
+      cinsiyetDurum = 'erkek';
+    }
+    aktiviteDuzeyi = prefs.getString('aktiviteDuzeyi') ?? 'hafif';
+    if (!aktiviteSecenekleri.containsKey(aktiviteDuzeyi)) {
+      aktiviteDuzeyi = 'hafif';
+    }
+    havaDurumu = prefs.getString('havaDurumu') ?? 'normal';
+    if (!havaSecenekleri.containsKey(havaDurumu)) {
+      havaDurumu = 'normal';
+    }
+    gunlukKafeinAdet = (prefs.getInt('gunlukKafeinAdet') ?? 2).clamp(0, 15);
+    otomatikHedefKullan = prefs.getBool('otomatikHedefKullan') ?? true;
+
+    if (otomatikHedefKullan) {
+      gunlukHedef = onerilenHedef;
+    } else {
+      gunlukHedef =
+          (prefs.getInt('gunlukHedef') ?? onerilenHedef).clamp(500, 10000);
+    }
+
     bardakBoyutu = (prefs.getInt('bardakBoyutu') ?? 250).clamp(50, 2000);
     hatirlaticiAcik = prefs.getBool('hatirlaticiAcik') ?? true;
-    hatirlatmaSikligi = (prefs.getInt('hatirlatmaSikligi') ?? 60).clamp(15, 240);
+    hatirlatmaSikligi =
+        (prefs.getInt('hatirlatmaSikligi') ?? 60).clamp(15, 240);
     enIyiSeri = max(0, prefs.getInt('enIyiSeri') ?? 0);
 
     final sessizBasStr = prefs.getString('sessizBaslangic');
@@ -269,25 +467,42 @@ class SuTakipProvider extends ChangeNotifier {
     if (gecmisStr != null) {
       try {
         final decoded = json.decode(gecmisStr) as Map<String, dynamic>;
-        suGecmisi = decoded.map((k, v) => MapEntry(k, (v as num).toInt()));
-      } catch (_) {}
+        suGecmisi = decoded.map(
+          (k, v) => MapEntry(k, (v as num).toInt()),
+        );
+      } catch (e) {
+        debugPrint('Geçmiş verisi okunamadı: $e');
+      }
     }
 
     _seriHesapla();
     _bildirimleriSenkronizeEt();
     notifyListeners();
   }
+
   Future<void> _kaydet() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('kullaniciAdi', kullaniciAdi);
     await prefs.setInt('kilo', kilo);
+    await prefs.setInt('yas', yas);
+    await prefs.setString('cinsiyetDurum', cinsiyetDurum);
+    await prefs.setString('aktiviteDuzeyi', aktiviteDuzeyi);
+    await prefs.setString('havaDurumu', havaDurumu);
+    await prefs.setInt('gunlukKafeinAdet', gunlukKafeinAdet);
+    await prefs.setBool('otomatikHedefKullan', otomatikHedefKullan);
     await prefs.setInt('gunlukHedef', gunlukHedef);
     await prefs.setInt('bardakBoyutu', bardakBoyutu);
     await prefs.setBool('hatirlaticiAcik', hatirlaticiAcik);
     await prefs.setInt('hatirlatmaSikligi', hatirlatmaSikligi);
     await prefs.setInt('enIyiSeri', enIyiSeri);
-    await prefs.setString('sessizBaslangic', '${sessizBaslangic.hour}:${sessizBaslangic.minute}');
-    await prefs.setString('sessizBitis', '${sessizBitis.hour}:${sessizBitis.minute}');
+    await prefs.setString(
+      'sessizBaslangic',
+      '${sessizBaslangic.hour}:${sessizBaslangic.minute}',
+    );
+    await prefs.setString(
+      'sessizBitis',
+      '${sessizBitis.hour}:${sessizBitis.minute}',
+    );
     await prefs.setString('suGecmisi', json.encode(suGecmisi));
   }
 }

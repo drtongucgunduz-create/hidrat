@@ -11,8 +11,13 @@ class IstatistikPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final provider = context.watch<SuTakipProvider>();
     final haftalikDetay = provider.haftalikDetayliVeri;
-    final enYuksekGunluk = haftalikDetay.isEmpty ? 0.0 : haftalikDetay.map((e) => e.miktar).reduce(max);
-    final grafikTavan = max(provider.gunlukHedef * 1.3, max(enYuksekGunluk * 1.2, 1000.0));
+    final enYuksekGunluk = haftalikDetay.isEmpty
+        ? 0.0
+        : haftalikDetay.map((e) => e.miktar).reduce(max);
+    final grafikTavan = max(
+      provider.gunlukHedef * 1.3,
+      max(enYuksekGunluk * 1.2, 1000.0),
+    );
 
     return Scaffold(
       appBar: AppBar(title: const Text('📊 İstatistikler')),
@@ -21,11 +26,17 @@ class IstatistikPage extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Bugünkü Özet
             _ozetKarti(provider),
             const SizedBox(height: 24),
+            // Haftalık Grafik
             const Text(
               '📈 Son 7 Gün',
-              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF2196F3)),
+              style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF2196F3),
+              ),
             ),
             const SizedBox(height: 16),
             SizedBox(
@@ -44,9 +55,13 @@ class IstatistikPage extends StatelessWidget {
                           toY: veri.miktar,
                           color: hedefTamam
                               ? Colors.green
-                              : (veri.bugunMu ? const Color(0xFF1565C0) : const Color(0xFF2196F3)),
+                              : (veri.bugunMu
+                                  ? const Color(0xFF1565C0)
+                                  : const Color(0xFF2196F3)),
                           width: 22,
-                          borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
+                          borderRadius: const BorderRadius.vertical(
+                            top: Radius.circular(8),
+                          ),
                         ),
                       ],
                     );
@@ -59,7 +74,9 @@ class IstatistikPage extends StatelessWidget {
                         reservedSize: 32,
                         getTitlesWidget: (value, meta) {
                           final idx = value.toInt();
-                          if (idx < 0 || idx >= haftalikDetay.length) return const SizedBox.shrink();
+                          if (idx < 0 || idx >= haftalikDetay.length) {
+                            return const SizedBox.shrink();
+                          }
                           final veri = haftalikDetay[idx];
                           return Padding(
                             padding: const EdgeInsets.only(top: 8),
@@ -67,8 +84,12 @@ class IstatistikPage extends StatelessWidget {
                               veri.kisaGunAdi,
                               style: TextStyle(
                                 fontSize: 12,
-                                fontWeight: veri.bugunMu ? FontWeight.bold : FontWeight.normal,
-                                color: veri.bugunMu ? const Color(0xFF1565C0) : Colors.black87,
+                                fontWeight: veri.bugunMu
+                                  ? FontWeight.bold
+                                  : FontWeight.normal,
+                                color: veri.bugunMu
+                                    ? const Color(0xFF1565C0)
+                                    : Colors.black87,
                               ),
                             ),
                           );
@@ -80,19 +101,30 @@ class IstatistikPage extends StatelessWidget {
                         showTitles: true,
                         reservedSize: 48,
                         getTitlesWidget: (value, meta) {
-                          return Text('${value.toInt()}ml', style: const TextStyle(fontSize: 10));
+                          return Text(
+                            '${value.toInt()}ml',
+                            style: const TextStyle(fontSize: 10),
+                          );
                         },
                       ),
                     ),
-                    topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                    rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                    topTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                    rightTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
                   ),
-                  gridData: const FlGridData(show: true, drawVerticalLine: false),
+                  gridData: const FlGridData(
+                    show: true,
+                    drawVerticalLine: false,
+                  ),
                   borderData: FlBorderData(show: false),
                 ),
               ),
             ),
             const SizedBox(height: 24),
+            // İstatistik Kartları
             _istatistikKarti(
               '🔥 Mevcut Seri / En İyi Seri',
               '${provider.mevcutSeri} gün (Rekor: ${provider.enIyiSeri} gün)',
@@ -118,6 +150,7 @@ class IstatistikPage extends StatelessWidget {
       ),
     );
   }
+
   Widget _ozetKarti(SuTakipProvider p) {
     final guvenliHedef = max(1, p.gunlukHedef);
     final yuzde = (p.bugunIcilen / guvenliHedef * 100).toStringAsFixed(0);
@@ -126,7 +159,9 @@ class IstatistikPage extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(colors: [Color(0xFF2196F3), Color(0xFF64B5F6)]),
+        gradient: const LinearGradient(
+          colors: [Color(0xFF2196F3), Color(0xFF64B5F6)],
+        ),
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
@@ -138,32 +173,55 @@ class IstatistikPage extends StatelessWidget {
       ),
       child: Column(
         children: [
-          const Text('Bugün', style: TextStyle(fontSize: 18, color: Colors.white70)),
+          const Text(
+            'Bugün',
+            style: TextStyle(fontSize: 18, color: Colors.white70),
+          ),
           const SizedBox(height: 8),
           Text(
             '${p.bugunIcilen} / ${p.gunlukHedef} ml',
-            style: const TextStyle(fontSize: 36, fontWeight: FontWeight.bold, color: Colors.white),
+            style: const TextStyle(
+              fontSize: 36,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
           ),
           const SizedBox(height: 8),
-          Text('%$yuzde tamamlandı', style: const TextStyle(fontSize: 16, color: Colors.white70)),
+          Text(
+            '%$yuzde tamamlandı',
+            style: const TextStyle(fontSize: 16, color: Colors.white70),
+          ),
         ],
       ),
     );
   }
 
-  Widget _istatistikKarti(String baslik, String deger, IconData icon, Color renk) {
+  Widget _istatistikKarti(
+    String baslik,
+    String deger,
+    IconData icon,
+    Color renk,
+  ) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 8)],
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 8,
+          ),
+        ],
       ),
       child: Row(
         children: [
           Container(
             padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(color: renk.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
+            decoration: BoxDecoration(
+              color: renk.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(12),
+            ),
             child: Icon(icon, color: renk, size: 28),
           ),
           const SizedBox(width: 16),
@@ -171,8 +229,18 @@ class IstatistikPage extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(baslik, style: const TextStyle(fontSize: 14, color: Colors.grey)),
-                Text(deger, style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: renk)),
+                Text(
+                  baslik,
+                  style: const TextStyle(fontSize: 14, color: Colors.grey),
+                ),
+                Text(
+                  deger,
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: renk,
+                  ),
+                ),
               ],
             ),
           ),

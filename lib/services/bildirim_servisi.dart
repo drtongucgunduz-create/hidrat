@@ -9,12 +9,14 @@ class BildirimServisi {
   factory BildirimServisi() => _instance;
   BildirimServisi._internal();
 
-  final FlutterLocalNotificationsPlugin _plugin = FlutterLocalNotificationsPlugin();
+  final FlutterLocalNotificationsPlugin _plugin =
+      FlutterLocalNotificationsPlugin();
   bool _baslatildi = false;
   Timer? _periyodikTimer;
 
   Future<void> baslat() async {
     if (_baslatildi || kIsWeb) return;
+
     try {
       const androidAyar = AndroidInitializationSettings('@mipmap/ic_launcher');
       const iosAyar = DarwinInitializationSettings(
@@ -22,21 +24,28 @@ class BildirimServisi {
         requestBadgePermission: true,
         requestSoundPermission: true,
       );
-      const linuxAyar = LinuxInitializationSettings(defaultActionName: 'Uygulamayi Ac');
+      const linuxAyar = LinuxInitializationSettings(
+        defaultActionName: 'Uygulamayı Aç',
+      );
+
       const initAyar = InitializationSettings(
         android: androidAyar,
         iOS: iosAyar,
         macOS: iosAyar,
         linux: linuxAyar,
       );
+
       await _plugin.initialize(initAyar);
+
       if (!kIsWeb && Platform.isAndroid) {
-        final androidPlugin = _plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+        final androidPlugin = _plugin.resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>();
         await androidPlugin?.requestNotificationsPermission();
       }
+
       _baslatildi = true;
     } catch (e) {
-      debugPrint('Bildirim servisi baslatilamadi: $e');
+      debugPrint('Bildirim servisi başlatılamadı: $e');
     }
   }
 
@@ -45,6 +54,7 @@ class BildirimServisi {
     final simdiDakika = simdi.hour * 60 + simdi.minute;
     final basDakika = baslangic.hour * 60 + baslangic.minute;
     final bitDakika = bitis.hour * 60 + bitis.minute;
+
     if (basDakika <= bitDakika) {
       return simdiDakika >= basDakika && simdiDakika < bitDakika;
     } else {
@@ -64,7 +74,9 @@ class BildirimServisi {
         await _plugin.cancelAll();
       } catch (_) {}
     }
+
     if (!acik) return;
+
     _periyodikTimer = Timer.periodic(
       Duration(minutes: siklikDakika.clamp(15, 240)),
       (_) async {
@@ -76,6 +88,7 @@ class BildirimServisi {
         }
       },
     );
+
     if (!kIsWeb && _baslatildi && (Platform.isAndroid || Platform.isIOS)) {
       try {
         const detaylar = NotificationDetails(
@@ -88,6 +101,7 @@ class BildirimServisi {
           ),
           iOS: DarwinNotificationDetails(),
         );
+
         if (siklikDakika == 60) {
           await _plugin.periodicallyShow(
             100,
@@ -99,7 +113,7 @@ class BildirimServisi {
           );
         }
       } catch (e) {
-        debugPrint('Periyodik bildirim kurulamadi: $e');
+        debugPrint('Periyodik bildirim kurulamadı: $e');
       }
     }
   }
@@ -109,8 +123,11 @@ class BildirimServisi {
     required String icerik,
   }) async {
     if (kIsWeb) return false;
-    if (!_baslatildi) await baslat();
+    if (!_baslatildi) {
+      await baslat();
+    }
     if (!_baslatildi) return false;
+
     try {
       const detaylar = NotificationDetails(
         android: AndroidNotificationDetails(
@@ -122,6 +139,7 @@ class BildirimServisi {
         ),
         iOS: DarwinNotificationDetails(),
       );
+
       await _plugin.show(
         DateTime.now().millisecondsSinceEpoch ~/ 1000,
         baslik,
@@ -130,7 +148,7 @@ class BildirimServisi {
       );
       return true;
     } catch (e) {
-      debugPrint('Bildirim gonderilemedi: $e');
+      debugPrint('Bildirim gönderilemedi: $e');
       return false;
     }
   }

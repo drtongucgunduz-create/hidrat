@@ -33,22 +33,39 @@ class _HatirlaticiPageState extends State<HatirlaticiPage> {
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
+          // Hatırlatıcı Aç/Kapat
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              gradient: const LinearGradient(colors: [Color(0xFF2196F3), Color(0xFF64B5F6)]),
+              gradient: const LinearGradient(
+                colors: [Color(0xFF2196F3), Color(0xFF64B5F6)],
+              ),
               borderRadius: BorderRadius.circular(20),
             ),
             child: Row(
               children: [
-                const Icon(Icons.notifications_active, size: 40, color: Colors.white),
+                const Icon(
+                  Icons.notifications_active,
+                  size: 40,
+                  color: Colors.white,
+                ),
                 const SizedBox(width: 16),
                 const Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Hatırlatıcılar', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
-                      Text('Su içmeyi unutma!', style: TextStyle(color: Colors.white70)),
+                      Text(
+                        'Hatırlatıcılar',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                      Text(
+                        'Su içmeyi unutma!',
+                        style: TextStyle(color: Colors.white70),
+                      ),
                     ],
                   ),
                 ),
@@ -61,41 +78,77 @@ class _HatirlaticiPageState extends State<HatirlaticiPage> {
             ),
           ),
           const SizedBox(height: 24),
-          const Text('Hatırlatma Sıklığı', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF2196F3))),
+          // Sıklık Seçimi
+          const Text(
+            'Hatırlatma Sıklığı',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF2196F3),
+            ),
+          ),
           const SizedBox(height: 12),
           ..._siklikSecenekleri.map((secenek) {
             final dakika = secenek['dakika'] as int;
             final etiket = secenek['etiket'] as String;
             final secili = provider.hatirlatmaSikligi == dakika;
             return Card(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              color: secili ? const Color(0xFF2196F3).withOpacity(0.1) : null,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              color: secili
+                  ? const Color(0xFF2196F3).withOpacity(0.1)
+                  : null,
               child: ListTile(
                 leading: Icon(
                   secili ? Icons.check_circle : Icons.circle_outlined,
                   color: secili ? const Color(0xFF2196F3) : Colors.grey,
                 ),
-                title: Text(etiket, style: TextStyle(fontWeight: secili ? FontWeight.bold : FontWeight.normal)),
+                title: Text(
+                  etiket,
+                  style: TextStyle(
+                    fontWeight: secili ? FontWeight.bold : FontWeight.normal,
+                  ),
+                ),
                 onTap: () => provider.hatirlatmaSikligiGuncelle(dakika),
               ),
             );
           }),
           const SizedBox(height: 24),
-          const Text('Sessiz Saatler', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF2196F3))),
+          // Sessiz Saatler
+          const Text(
+            'Sessiz Saatler',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF2196F3),
+            ),
+          ),
           const SizedBox(height: 8),
-          Text('Bu saatler arasında bildirim gelmez', style: TextStyle(color: Colors.grey.shade600)),
+          Text(
+            'Bu saatler arasında bildirim gelmez',
+            style: TextStyle(color: Colors.grey.shade600),
+          ),
           const SizedBox(height: 12),
           Row(
             children: [
               Expanded(
-                child: _saatSec('Başlangıç', provider.sessizBaslangic, (saat) => provider.sessizBaslangicGuncelle(saat)),
+                child: _saatSec(
+                  'Başlangıç',
+                  provider.sessizBaslangic,
+                  (saat) => provider.sessizBaslangicGuncelle(saat),
+                ),
               ),
               const Padding(
                 padding: EdgeInsets.symmetric(horizontal: 8),
                 child: Text('—', style: TextStyle(fontSize: 20)),
               ),
               Expanded(
-                child: _saatSec('Bitiş', provider.sessizBitis, (saat) => provider.sessizBitisGuncelle(saat)),
+                child: _saatSec(
+                  'Bitiş',
+                  provider.sessizBitis,
+                  (saat) => provider.sessizBitisGuncelle(saat),
+                ),
               ),
             ],
           ),
@@ -104,12 +157,17 @@ class _HatirlaticiPageState extends State<HatirlaticiPage> {
             onPressed: () async {
               final gonderildi = await BildirimServisi().anlikBildirimGoster(
                 baslik: '💧 Hidrat Test Bildirimi',
-                icerik: 'Harika! Su hatırlatıcı bildirimlerin sorunsuz çalışıyor.',
+                icerik:
+                    'Harika! Su hatırlatıcı bildirimlerin sorunsuz çalışıyor.',
               );
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                    content: Text(gonderildi ? 'Test bildirimi gönderildi!' : 'Su içme zamanı! 💧 (Bildirim önizlemesi)'),
+                    content: Text(
+                      gonderildi
+                          ? 'Test bildirimi gönderildi!'
+                          : 'Su içme zamanı! 💧 (Bildirim önizlemesi)',
+                    ),
                   ),
                 );
               }
@@ -118,7 +176,9 @@ class _HatirlaticiPageState extends State<HatirlaticiPage> {
             label: const Text('Test Bildirimi Gönder'),
             style: OutlinedButton.styleFrom(
               padding: const EdgeInsets.symmetric(vertical: 14),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
             ),
           ),
         ],
@@ -126,16 +186,25 @@ class _HatirlaticiPageState extends State<HatirlaticiPage> {
     );
   }
 
-  Widget _saatSec(String label, TimeOfDay saat, Function(TimeOfDay) onSecildi) {
+  Widget _saatSec(
+    String label,
+    TimeOfDay saat,
+    Function(TimeOfDay) onSecildi,
+  ) {
     return GestureDetector(
       onTap: () async {
-        final secilen = await showTimePicker(context: context, initialTime: saat);
+        final secilen = await showTimePicker(
+          context: context,
+          initialTime: saat,
+        );
         if (secilen != null) onSecildi(secilen);
       },
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          border: Border.all(color: const Color(0xFF2196F3).withOpacity(0.3)),
+          border: Border.all(
+            color: const Color(0xFF2196F3).withOpacity(0.3),
+          ),
           borderRadius: BorderRadius.circular(12),
         ),
         child: Column(
@@ -144,7 +213,11 @@ class _HatirlaticiPageState extends State<HatirlaticiPage> {
             const SizedBox(height: 4),
             Text(
               _saatFormatla(saat),
-              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF2196F3)),
+              style: const TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF2196F3),
+              ),
             ),
           ],
         ),

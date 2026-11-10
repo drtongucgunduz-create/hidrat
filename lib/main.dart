@@ -12,14 +12,19 @@ import 'screens/hatirlatici_page.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Sadece desteklenen mobil platformlarda AdMob'u başlat
   if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
     try {
       await MobileAds.instance.initialize();
     } catch (e) {
-      debugPrint('AdMob baslatilamadi: $e');
+      debugPrint('AdMob başlatılamadı: $e');
     }
   }
+
+  // Bildirim servisini başlat
   await BildirimServisi().baslat();
+
   runApp(const HidratApp());
 }
 

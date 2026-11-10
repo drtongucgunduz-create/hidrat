@@ -14,7 +14,8 @@ class _ReklamBannerState extends State<ReklamBanner> {
   BannerAd? _bannerAd;
   bool _isLoaded = false;
 
-  bool get _reklamDestekleniyor => !kIsWeb && (Platform.isAndroid || Platform.isIOS);
+  bool get _reklamDestekleniyor =>
+      !kIsWeb && (Platform.isAndroid || Platform.isIOS);
 
   String get _adUnitId {
     if (!kIsWeb && Platform.isIOS) {
@@ -26,7 +27,9 @@ class _ReklamBannerState extends State<ReklamBanner> {
   @override
   void initState() {
     super.initState();
-    if (_reklamDestekleniyor) _loadAd();
+    if (_reklamDestekleniyor) {
+      _loadAd();
+    }
   }
 
   void _loadAd() {
@@ -36,11 +39,15 @@ class _ReklamBannerState extends State<ReklamBanner> {
       request: const AdRequest(),
       listener: BannerAdListener(
         onAdLoaded: (_) {
-          if (mounted) setState(() => _isLoaded = true);
+          if (mounted) {
+            setState(() => _isLoaded = true);
+          }
         },
         onAdFailedToLoad: (ad, error) {
           ad.dispose();
-          if (mounted) setState(() => _isLoaded = false);
+          if (mounted) {
+            setState(() => _isLoaded = false);
+          }
         },
       ),
     )..load();
@@ -54,7 +61,9 @@ class _ReklamBannerState extends State<ReklamBanner> {
 
   @override
   Widget build(BuildContext context) {
-    if (!_reklamDestekleniyor) return const SizedBox.shrink();
+    if (!_reklamDestekleniyor) {
+      return const SizedBox.shrink();
+    }
     return _isLoaded && _bannerAd != null
         ? Container(
             alignment: Alignment.center,

@@ -38,7 +38,8 @@ class _BardakSecimiState extends State<BardakSecimi> {
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Lütfen 1 ile 5000 ml arasında geçerli bir miktar girin.'),
+          content:
+              Text('Lütfen 1 ile 5000 ml arasında geçerli bir miktar girin.'),
           duration: Duration(seconds: 2),
         ),
       );
@@ -66,10 +67,15 @@ class _BardakSecimiState extends State<BardakSecimi> {
               if (widget.seciliGunIcilen > 0)
                 TextButton.icon(
                   onPressed: () {
-                    final azaltilacak = widget.sonEklenenMiktar ?? widget.varsayilanBardakMl;
+                    final azaltilacak =
+                        widget.sonEklenenMiktar ?? widget.varsayilanBardakMl;
                     widget.onAzalt(azaltilacak);
                   },
-                  icon: const Icon(Icons.undo, size: 18, color: Colors.redAccent),
+                  icon: const Icon(
+                    Icons.undo,
+                    size: 18,
+                    color: Colors.redAccent,
+                  ),
                   label: Text(
                     '-${widget.sonEklenenMiktar ?? widget.varsayilanBardakMl} ml Geri Al',
                     style: const TextStyle(color: Colors.redAccent),
@@ -81,13 +87,34 @@ class _BardakSecimiState extends State<BardakSecimi> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              _bardakButonu('🥛', 'Bardak\n(Özel)', widget.varsayilanBardakMl, const Color(0xFF64B5F6)),
-              _bardakButonu('🥤', 'Büyük\nBardak', 330, const Color(0xFF42A5F5)),
-              _bardakButonu('🍶', 'Küçük\nŞişe', 500, const Color(0xFF2196F3)),
-              _bardakButonu('🫗', 'Sürahi', 1000, const Color(0xFF1E88E5)),
+              _bardakButonu(
+                '🥛',
+                'Bardak\n(Özel)',
+                widget.varsayilanBardakMl,
+                const Color(0xFF64B5F6),
+              ),
+              _bardakButonu(
+                '🥤',
+                'Büyük\nBardak',
+                330,
+                const Color(0xFF42A5F5),
+              ),
+              _bardakButonu(
+                '🍶',
+                'Küçük\nŞişe',
+                500,
+                const Color(0xFF2196F3),
+              ),
+              _bardakButonu(
+                '🫗',
+                'Sürahi',
+                1000,
+                const Color(0xFF1E88E5),
+              ),
             ],
           ),
           const SizedBox(height: 20),
+          // Özel Miktar
           Row(
             children: [
               Expanded(
@@ -97,11 +124,19 @@ class _BardakSecimiState extends State<BardakSecimi> {
                   onSubmitted: (_) => _ozelMiktarGonder(),
                   decoration: InputDecoration(
                     hintText: 'Özel miktar (ml)',
-                    prefixIcon: const Icon(Icons.edit, color: Color(0xFF2196F3)),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    prefixIcon: const Icon(
+                      Icons.edit,
+                      color: Color(0xFF2196F3),
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: Color(0xFF2196F3), width: 2),
+                      borderSide: const BorderSide(
+                        color: Color(0xFF2196F3),
+                        width: 2,
+                      ),
                     ),
                   ),
                 ),
@@ -111,10 +146,18 @@ class _BardakSecimiState extends State<BardakSecimi> {
                 onPressed: _ozelMiktarGonder,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF2196F3),
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 16,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
-                child: const Text('Ekle', style: TextStyle(color: Colors.white, fontSize: 16)),
+                child: const Text(
+                  'Ekle',
+                  style: TextStyle(color: Colors.white, fontSize: 16),
+                ),
               ),
             ],
           ),
@@ -144,8 +187,15 @@ class _BardakSecimiState extends State<BardakSecimi> {
               ),
             ),
             const SizedBox(height: 8),
-            Text(label, textAlign: TextAlign.center, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
-            Text('$ml ml', style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+            Text(
+              label,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+            ),
+            Text(
+              '$ml ml',
+              style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+            ),
           ],
         ),
       ),

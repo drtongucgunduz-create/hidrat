@@ -43,6 +43,7 @@ class _SuSeviyesiGostergesiState extends State<SuSeviyesiGostergesi>
 
     return Column(
       children: [
+        // Su Damlası Animasyonu
         SizedBox(
           width: 200,
           height: 210,
@@ -59,6 +60,7 @@ class _SuSeviyesiGostergesiState extends State<SuSeviyesiGostergesi>
           ),
         ),
         const SizedBox(height: 8),
+        // Yüzdelik Gösterim
         Text(
           '%${hamYuzde.toStringAsFixed(0)}',
           style: TextStyle(
@@ -87,7 +89,10 @@ class _SuSeviyesiGostergesiState extends State<SuSeviyesiGostergesi>
                 SizedBox(width: 8),
                 Text(
                   'Hedef Tamamlandı!',
-                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ],
             ),
@@ -102,7 +107,10 @@ class _SuDamlasiPainter extends CustomPainter {
   final double dolulukOrani;
   final double dalgaFazi;
 
-  _SuDamlasiPainter({required this.dolulukOrani, required this.dalgaFazi});
+  _SuDamlasiPainter({
+    required this.dolulukOrani,
+    required this.dalgaFazi,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -110,15 +118,22 @@ class _SuDamlasiPainter extends CustomPainter {
     final centerY = size.height / 2;
     final radius = min(size.width, size.height) / 2 - 10;
 
+    // Arka Plan Daire
     final arkaplanPaint = Paint()
       ..color = const Color(0xFFE3F2FD)
       ..style = PaintingStyle.fill;
     canvas.drawCircle(Offset(centerX, centerY), radius, arkaplanPaint);
 
+    // Su Dolumu ve Dalga Efekti
     if (dolulukOrani > 0) {
       final suYuksekligi = max(4.0, radius * 2 * dolulukOrani);
       final suUstY = centerY + radius - suYuksekligi;
-      final suRect = Rect.fromLTWH(centerX - radius, suUstY, radius * 2, suYuksekligi);
+      final suRect = Rect.fromLTWH(
+        centerX - radius,
+        suUstY,
+        radius * 2,
+        suYuksekligi,
+      );
 
       final suPaint = Paint()
         ..shader = const LinearGradient(
@@ -129,9 +144,13 @@ class _SuDamlasiPainter extends CustomPainter {
 
       canvas.save();
       canvas.clipPath(
-        Path()..addOval(Rect.fromCircle(center: Offset(centerX, centerY), radius: radius)),
+        Path()
+          ..addOval(
+            Rect.fromCircle(center: Offset(centerX, centerY), radius: radius),
+          ),
       );
 
+      // Ana su dalgası
       final suPath = Path();
       suPath.moveTo(centerX - radius, suUstY);
       for (double x = centerX - radius; x <= centerX + radius; x += 2) {
@@ -143,6 +162,7 @@ class _SuDamlasiPainter extends CustomPainter {
       suPath.close();
       canvas.drawPath(suPath, suPaint);
 
+      // İkinci açık renkli dalga katmanı
       final dalgaPaint = Paint()
         ..color = Colors.white.withOpacity(0.28)
         ..style = PaintingStyle.fill;
@@ -160,16 +180,28 @@ class _SuDamlasiPainter extends CustomPainter {
       canvas.restore();
     }
 
+    // Kenarlık
     final kenarlikPaint = Paint()
       ..color = const Color(0xFF2196F3)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 3;
     canvas.drawCircle(Offset(centerX, centerY), radius, kenarlikPaint);
 
+    // Damla İkonu
     final damlaPath = Path();
     damlaPath.moveTo(centerX, centerY - radius + 24);
-    damlaPath.quadraticBezierTo(centerX - 20, centerY - 5, centerX, centerY + 15);
-    damlaPath.quadraticBezierTo(centerX + 20, centerY - 5, centerX, centerY - radius + 24);
+    damlaPath.quadraticBezierTo(
+      centerX - 20,
+      centerY - 5,
+      centerX,
+      centerY + 15,
+    );
+    damlaPath.quadraticBezierTo(
+      centerX + 20,
+      centerY - 5,
+      centerX,
+      centerY - radius + 24,
+    );
     canvas.drawPath(
       damlaPath,
       Paint()
@@ -180,5 +212,6 @@ class _SuDamlasiPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _SuDamlasiPainter oldDelegate) =>
-      oldDelegate.dolulukOrani != dolulukOrani || oldDelegate.dalgaFazi != dalgaFazi;
+      oldDelegate.dolulukOrani != dolulukOrani ||
+      oldDelegate.dalgaFazi != dalgaFazi;
 }
