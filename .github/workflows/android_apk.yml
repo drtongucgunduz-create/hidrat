@@ -30,7 +30,17 @@ jobs:
       - name: Proje Yapisini ve Tum Uygulama Kodlarini Olustur
         run: |
           rm -rf android ios
-          flutter create --org com.hidrat.app --project-name hidrat .
+          flutter create --org com.hidrat --project-name hidrat .
+
+          rm -rf android/app/src/main/kotlin android/app/src/main/java
+          mkdir -p android/app/src/main/kotlin/com/hidrat/app
+          cat > android/app/src/main/kotlin/com/hidrat/app/MainActivity.kt << 'EOF'
+          package com.hidrat.app
+
+          import io.flutter.embedding.android.FlutterActivity
+
+          class MainActivity: FlutterActivity()
+          EOF
 
           mkdir -p assets/images assets/sounds
           mkdir -p lib/providers lib/services lib/screens lib/widgets
