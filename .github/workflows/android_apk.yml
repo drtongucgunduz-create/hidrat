@@ -48,7 +48,7 @@ jobs:
 
           cat > pubspec.yaml << 'EOF'
           name: hidrat
-          description: Su Icme Hatirlaticisi - Gunluk su takip uygulamasi
+          description: Su İçme Hatırlatıcısı - Günlük su takip uygulaması
           publish_to: 'none'
           version: 1.0.0+1
 
@@ -93,14 +93,19 @@ jobs:
 
           Future<void> main() async {
             WidgetsFlutterBinding.ensureInitialized();
+
+            // Sadece desteklenen mobil platformlarda AdMob'u başlat
             if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
               try {
                 await MobileAds.instance.initialize();
               } catch (e) {
-                debugPrint('AdMob baslatilamadi: $e');
+                debugPrint('AdMob başlatılamadı: $e');
               }
             }
+
+            // Bildirim servisini başlat
             await BildirimServisi().baslat();
+
             runApp(const HidratApp());
           }
 
@@ -203,12 +208,14 @@ jobs:
             factory BildirimServisi() => _instance;
             BildirimServisi._internal();
 
-            final FlutterLocalNotificationsPlugin _plugin = FlutterLocalNotificationsPlugin();
+            final FlutterLocalNotificationsPlugin _plugin =
+                FlutterLocalNotificationsPlugin();
             bool _baslatildi = false;
             Timer? _periyodikTimer;
 
             Future<void> baslat() async {
               if (_baslatildi || kIsWeb) return;
+
               try {
                 const androidAyar = AndroidInitializationSettings('@mipmap/ic_launcher');
                 const iosAyar = DarwinInitializationSettings(
@@ -216,21 +223,28 @@ jobs:
                   requestBadgePermission: true,
                   requestSoundPermission: true,
                 );
-                const linuxAyar = LinuxInitializationSettings(defaultActionName: 'Uygulamayi Ac');
+                const linuxAyar = LinuxInitializationSettings(
+                  defaultActionName: 'Uygulamayı Aç',
+                );
+
                 const initAyar = InitializationSettings(
                   android: androidAyar,
                   iOS: iosAyar,
                   macOS: iosAyar,
                   linux: linuxAyar,
                 );
+
                 await _plugin.initialize(initAyar);
+
                 if (!kIsWeb && Platform.isAndroid) {
-                  final androidPlugin = _plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+                  final androidPlugin = _plugin.resolvePlatformSpecificImplementation<
+                      AndroidFlutterLocalNotificationsPlugin>();
                   await androidPlugin?.requestNotificationsPermission();
                 }
+
                 _baslatildi = true;
               } catch (e) {
-                debugPrint('Bildirim servisi baslatilamadi: $e');
+                debugPrint('Bildirim servisi başlatılamadı: $e');
               }
             }
 
@@ -239,6 +253,7 @@ jobs:
               final simdiDakika = simdi.hour * 60 + simdi.minute;
               final basDakika = baslangic.hour * 60 + baslangic.minute;
               final bitDakika = bitis.hour * 60 + bitis.minute;
+
               if (basDakika <= bitDakika) {
                 return simdiDakika >= basDakika && simdiDakika < bitDakika;
               } else {
@@ -258,7 +273,9 @@ jobs:
                   await _plugin.cancelAll();
                 } catch (_) {}
               }
+
               if (!acik) return;
+
               _periyodikTimer = Timer.periodic(
                 Duration(minutes: siklikDakika.clamp(15, 240)),
                 (_) async {
@@ -270,6 +287,7 @@ jobs:
                   }
                 },
               );
+
               if (!kIsWeb && _baslatildi && (Platform.isAndroid || Platform.isIOS)) {
                 try {
                   const detaylar = NotificationDetails(
@@ -282,6 +300,7 @@ jobs:
                     ),
                     iOS: DarwinNotificationDetails(),
                   );
+
                   if (siklikDakika == 60) {
                     await _plugin.periodicallyShow(
                       100,
@@ -293,7 +312,7 @@ jobs:
                     );
                   }
                 } catch (e) {
-                  debugPrint('Periyodik bildirim kurulamadi: $e');
+                  debugPrint('Periyodik bildirim kurulamadı: $e');
                 }
               }
             }
@@ -303,8 +322,11 @@ jobs:
               required String icerik,
             }) async {
               if (kIsWeb) return false;
-              if (!_baslatildi) await baslat();
+              if (!_baslatildi) {
+                await baslat();
+              }
               if (!_baslatildi) return false;
+
               try {
                 const detaylar = NotificationDetails(
                   android: AndroidNotificationDetails(
@@ -316,6 +338,7 @@ jobs:
                   ),
                   iOS: DarwinNotificationDetails(),
                 );
+
                 await _plugin.show(
                   DateTime.now().millisecondsSinceEpoch ~/ 1000,
                   baslik,
@@ -324,7 +347,7 @@ jobs:
                 );
                 return true;
               } catch (e) {
-                debugPrint('Bildirim gonderilemedi: $e');
+                debugPrint('Bildirim gönderilemedi: $e');
                 return false;
               }
             }
@@ -353,27 +376,121 @@ jobs:
           }
 
           class SuTakipProvider extends ChangeNotifier {
+            // Profil & Akıllı Hedef Kriterleri
             String kullaniciAdi = 'Kullanıcı';
             int kilo = 70;
+            int yas = 30;
+            String cinsiyetDurum = 'erkek'; // erkek, kadin, hamile, emziren
+            String aktiviteDuzeyi = 'hafif'; // hareketsiz, hafif, orta, yogun
+            String havaDurumu = 'normal'; // normal, sicak, cok_sicak
+            int gunlukKafeinAdet = 2; // Günlük çay/kahve bardak/fincan sayısı (her biri +125 ml)
+            bool otomatikHedefKullan = true;
+
             int gunlukHedef = 2500;
             int bardakBoyutu = 250;
 
+            // Su Takip
             Map<String, int> suGecmisi = {};
             DateTime seciliTarih = DateTime.now();
             int? _sonEklenenMiktar;
 
+            // Hatırlatıcı
             bool hatirlaticiAcik = true;
             int hatirlatmaSikligi = 60;
             TimeOfDay sessizBaslangic = const TimeOfDay(hour: 22, minute: 0);
             TimeOfDay sessizBitis = const TimeOfDay(hour: 8, minute: 0);
 
+            // İstatistik
             int enIyiSeri = 0;
 
+            // Etiket Haritaları
+            static const Map<String, String> cinsiyetSecenekleri = {
+              'erkek': 'Erkek',
+              'kadin': 'Kadın',
+              'hamile': 'Kadın (Hamile - +300 ml)',
+              'emziren': 'Kadın (Emziren - +700 ml)',
+            };
+
+            static const Map<String, String> aktiviteSecenekleri = {
+              'hareketsiz': 'Masa Başı / Az Hareketli (+0 ml)',
+              'hafif': 'Hafif Aktif / Günlük Yürüyüş (+300 ml)',
+              'orta': 'Orta Aktif / Düzenli Egzersiz (+500 ml)',
+              'yogun': 'Çok Aktif / Yoğun Spor (+800 ml)',
+            };
+
+            static const Map<String, String> havaSecenekleri = {
+              'normal': 'Serin / Normal Hava (+0 ml)',
+              'sicak': 'Sıcak / Yaz Mevsimi (+400 ml)',
+              'cok_sicak': 'Çok Sıcak / Nemli Hava (+700 ml)',
+            };
+
+            // Akıllı Hedef Hesaplama Detayları
+            int get bazalSuIhtiyaci {
+              double mlPerKg;
+              if (yas < 30) {
+                mlPerKg = 38.0;
+              } else if (yas < 55) {
+                mlPerKg = 35.0;
+              } else {
+                mlPerKg = 30.0;
+              }
+              double bazal = kilo * mlPerKg;
+              if (cinsiyetDurum == 'erkek') {
+                bazal *= 1.08; // Erkeklerde kas kütlesi farkı (+%8)
+              }
+              return (bazal / 50).round() * 50;
+            }
+
+            int get ozelDurumEkSu {
+              if (cinsiyetDurum == 'hamile') return 300;
+              if (cinsiyetDurum == 'emziren') return 700;
+              return 0;
+            }
+
+            int get aktiviteEkSu {
+              switch (aktiviteDuzeyi) {
+                case 'hafif':
+                  return 300;
+                case 'orta':
+                  return 500;
+                case 'yogun':
+                  return 800;
+                default:
+                  return 0;
+              }
+            }
+
+            int get havaEkSu {
+              switch (havaDurumu) {
+                case 'sicak':
+                  return 400;
+                case 'cok_sicak':
+                  return 700;
+                default:
+                  return 0;
+              }
+            }
+
+            int get kafeinEkSu => gunlukKafeinAdet * 125;
+
+            int get onerilenHedef {
+              final toplam = bazalSuIhtiyaci +
+                  ozelDurumEkSu +
+                  aktiviteEkSu +
+                  havaEkSu +
+                  kafeinEkSu;
+              // 50 ml katlarına yuvarla ve 1000-10000 ml aralığında sınırla
+              final yuvarlanmis = ((toplam / 50).round() * 50);
+              return yuvarlanmis.clamp(1000, 10000);
+            }
+
+            // Getters
             int get seciliGunIcilen => suGecmisi[_tarihKey(seciliTarih)] ?? 0;
             int get bugunIcilen => suGecmisi[_tarihKey(DateTime.now())] ?? 0;
             int? get sonEklenenMiktar => _sonEklenenMiktar;
 
-            bool get seciliTarihBugunMu => _tarihKey(seciliTarih) == _tarihKey(DateTime.now());
+            bool get seciliTarihBugunMu =>
+                _tarihKey(seciliTarih) == _tarihKey(DateTime.now());
 
             String get seciliTarihFormatli {
               if (seciliTarihBugunMu) return 'Bugün';
@@ -382,12 +499,21 @@ jobs:
               return '${seciliTarih.day.toString().padLeft(2, '0')}.${seciliTarih.month.toString().padLeft(2, '0')}.${seciliTarih.year}';
             }
 
-            static const List<String> _haftaGunleri = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
+            static const List<String> _haftaGunleri = [
+              'Pzt',
+              'Sal',
+              'Çar',
+              'Per',
+              'Cum',
+              'Cmt',
+              'Paz',
+            ];
 
             List<GunlukSuVerisi> get haftalikDetayliVeri {
               final bugun = DateTime.now();
               return List.generate(7, (i) {
-                final gun = DateTime(bugun.year, bugun.month, bugun.day).subtract(Duration(days: 6 - i));
+                final gun = DateTime(bugun.year, bugun.month, bugun.day)
+                    .subtract(Duration(days: 6 - i));
                 final gunAdi = _haftaGunleri[gun.weekday - 1];
                 final miktar = (suGecmisi[_tarihKey(gun)] ?? 0).toDouble();
                 return GunlukSuVerisi(
@@ -399,7 +525,8 @@ jobs:
               });
             }
 
-            List<double> get haftalikVeri => haftalikDetayliVeri.map((g) => g.miktar).toList();
+            List<double> get haftalikVeri =>
+                haftalikDetayliVeri.map((g) => g.miktar).toList();
 
             int get toplamIcilen => suGecmisi.values.fold(0, (a, b) => a + b);
 
@@ -413,9 +540,11 @@ jobs:
               final bugun = DateTime.now();
               int seri = 0;
               DateTime kontrolGunu = DateTime(bugun.year, bugun.month, bugun.day);
+
               if ((suGecmisi[_tarihKey(kontrolGunu)] ?? 0) < gunlukHedef) {
                 kontrolGunu = kontrolGunu.subtract(const Duration(days: 1));
               }
+
               while ((suGecmisi[_tarihKey(kontrolGunu)] ?? 0) >= gunlukHedef) {
                 seri++;
                 kontrolGunu = kontrolGunu.subtract(const Duration(days: 1));
@@ -428,6 +557,7 @@ jobs:
 
             void _seriHesapla() {
               if (suGecmisi.isEmpty || gunlukHedef <= 0) return;
+
               final basariliTarihler = suGecmisi.entries
                   .where((e) => e.value >= gunlukHedef)
                   .map((e) => DateTime.tryParse(e.key))
@@ -451,12 +581,25 @@ jobs:
                     anlikSeri = 1;
                   }
                 }
-                if (anlikSeri > maksSeri) maksSeri = anlikSeri;
+                if (anlikSeri > maksSeri) {
+                  maksSeri = anlikSeri;
+                }
                 oncekiGun = gun;
               }
-              if (maksSeri > enIyiSeri) enIyiSeri = maksSeri;
+
+              if (maksSeri > enIyiSeri) {
+                enIyiSeri = maksSeri;
+              }
             }
 
+            void _otomatikHedefUygula() {
+              if (otomatikHedefKullan) {
+                gunlukHedef = onerilenHedef;
+              }
+              _seriHesapla();
+            }
+
+            // Su Ekle
             void suEkle(int ml) {
               if (ml <= 0) return;
               final key = _tarihKey(seciliTarih);
@@ -467,6 +610,7 @@ jobs:
               _kaydet();
             }
 
+            // Su Azalt / Geri Al
             void suAzalt(int ml) {
               if (ml <= 0) return;
               final key = _tarihKey(seciliTarih);
@@ -493,6 +637,7 @@ jobs:
               tarihDegistir(DateTime.now());
             }
 
+            // Profil & Akıllı Hedef Güncellemeleri
             void kullaniciAdiGuncelle(String ad) {
               final temizAd = ad.trim();
               if (temizAd.isEmpty) return;
@@ -503,13 +648,64 @@ jobs:
 
             void kiloGuncelle(int yeniKilo) {
               kilo = yeniKilo.clamp(20, 300);
-              gunlukHedef = (kilo * 35).clamp(500, 10000);
-              _seriHesapla();
+              otomatikHedefKullan = true;
+              _otomatikHedefUygula();
+              notifyListeners();
+              _kaydet();
+            }
+
+            void yasGuncelle(int yeniYas) {
+              yas = yeniYas.clamp(10, 100);
+              otomatikHedefKullan = true;
+              _otomatikHedefUygula();
+              notifyListeners();
+              _kaydet();
+            }
+
+            void cinsiyetDurumGuncelle(String yeniDurum) {
+              if (!cinsiyetSecenekleri.containsKey(yeniDurum)) return;
+              cinsiyetDurum = yeniDurum;
+              otomatikHedefKullan = true;
+              _otomatikHedefUygula();
+              notifyListeners();
+              _kaydet();
+            }
+
+            void aktiviteDuzeyiGuncelle(String yeniAktivite) {
+              if (!aktiviteSecenekleri.containsKey(yeniAktivite)) return;
+              aktiviteDuzeyi = yeniAktivite;
+              otomatikHedefKullan = true;
+              _otomatikHedefUygula();
+              notifyListeners();
+              _kaydet();
+            }
+
+            void havaDurumuGuncelle(String yeniHava) {
+              if (!havaSecenekleri.containsKey(yeniHava)) return;
+              havaDurumu = yeniHava;
+              otomatikHedefKullan = true;
+              _otomatikHedefUygula();
+              notifyListeners();
+              _kaydet();
+            }
+
+            void gunlukKafeinGuncelle(int adet) {
+              gunlukKafeinAdet = adet.clamp(0, 15);
+              otomatikHedefKullan = true;
+              _otomatikHedefUygula();
+              notifyListeners();
+              _kaydet();
+            }
+
+            void onerilenHedefiAktifEt() {
+              otomatikHedefKullan = true;
+              _otomatikHedefUygula();
               notifyListeners();
               _kaydet();
             }
 
             void hedefGuncelle(int hedef) {
+              otomatikHedefKullan = false;
               gunlukHedef = hedef.clamp(500, 10000);
               _seriHesapla();
               notifyListeners();
@@ -522,6 +718,7 @@ jobs:
               _kaydet();
             }
 
+            // Hatırlatıcı Güncellemeleri
             void hatirlaticiDegistir(bool deger) {
               hatirlaticiAcik = deger;
               _bildirimleriSenkronizeEt();
@@ -568,14 +765,38 @@ jobs:
               _kaydet();
             }
 
+            // Kayıt İşlemleri
             Future<void> yukle() async {
               final prefs = await SharedPreferences.getInstance();
               kullaniciAdi = prefs.getString('kullaniciAdi') ?? 'Kullanıcı';
               kilo = (prefs.getInt('kilo') ?? 70).clamp(20, 300);
-              gunlukHedef = (prefs.getInt('gunlukHedef') ?? 2500).clamp(500, 10000);
+              yas = (prefs.getInt('yas') ?? 30).clamp(10, 100);
+              cinsiyetDurum = prefs.getString('cinsiyetDurum') ?? 'erkek';
+              if (!cinsiyetSecenekleri.containsKey(cinsiyetDurum)) {
+                cinsiyetDurum = 'erkek';
+              }
+              aktiviteDuzeyi = prefs.getString('aktiviteDuzeyi') ?? 'hafif';
+              if (!aktiviteSecenekleri.containsKey(aktiviteDuzeyi)) {
+                aktiviteDuzeyi = 'hafif';
+              }
+              havaDurumu = prefs.getString('havaDurumu') ?? 'normal';
+              if (!havaSecenekleri.containsKey(havaDurumu)) {
+                havaDurumu = 'normal';
+              }
+              gunlukKafeinAdet = (prefs.getInt('gunlukKafeinAdet') ?? 2).clamp(0, 15);
+              otomatikHedefKullan = prefs.getBool('otomatikHedefKullan') ?? true;
+
+              if (otomatikHedefKullan) {
+                gunlukHedef = onerilenHedef;
+              } else {
+                gunlukHedef =
+                    (prefs.getInt('gunlukHedef') ?? onerilenHedef).clamp(500, 10000);
+              }
+
               bardakBoyutu = (prefs.getInt('bardakBoyutu') ?? 250).clamp(50, 2000);
               hatirlaticiAcik = prefs.getBool('hatirlaticiAcik') ?? true;
-              hatirlatmaSikligi = (prefs.getInt('hatirlatmaSikligi') ?? 60).clamp(15, 240);
+              hatirlatmaSikligi =
+                  (prefs.getInt('hatirlatmaSikligi') ?? 60).clamp(15, 240);
               enIyiSeri = max(0, prefs.getInt('enIyiSeri') ?? 0);
 
               final sessizBasStr = prefs.getString('sessizBaslangic');
@@ -603,25 +824,42 @@ jobs:
               if (gecmisStr != null) {
                 try {
                   final decoded = json.decode(gecmisStr) as Map<String, dynamic>;
-                  suGecmisi = decoded.map((k, v) => MapEntry(k, (v as num).toInt()));
-                } catch (_) {}
+                  suGecmisi = decoded.map(
+                    (k, v) => MapEntry(k, (v as num).toInt()),
+                  );
+                } catch (e) {
+                  debugPrint('Geçmiş verisi okunamadı: $e');
+                }
               }
 
               _seriHesapla();
               _bildirimleriSenkronizeEt();
               notifyListeners();
             }
+
             Future<void> _kaydet() async {
               final prefs = await SharedPreferences.getInstance();
               await prefs.setString('kullaniciAdi', kullaniciAdi);
               await prefs.setInt('kilo', kilo);
+              await prefs.setInt('yas', yas);
+              await prefs.setString('cinsiyetDurum', cinsiyetDurum);
+              await prefs.setString('aktiviteDuzeyi', aktiviteDuzeyi);
+              await prefs.setString('havaDurumu', havaDurumu);
+              await prefs.setInt('gunlukKafeinAdet', gunlukKafeinAdet);
+              await prefs.setBool('otomatikHedefKullan', otomatikHedefKullan);
               await prefs.setInt('gunlukHedef', gunlukHedef);
               await prefs.setInt('bardakBoyutu', bardakBoyutu);
               await prefs.setBool('hatirlaticiAcik', hatirlaticiAcik);
               await prefs.setInt('hatirlatmaSikligi', hatirlatmaSikligi);
               await prefs.setInt('enIyiSeri', enIyiSeri);
-              await prefs.setString('sessizBaslangic', '${sessizBaslangic.hour}:${sessizBaslangic.minute}');
-              await prefs.setString('sessizBitis', '${sessizBitis.hour}:${sessizBitis.minute}');
+              await prefs.setString(
+                'sessizBaslangic',
+                '${sessizBaslangic.hour}:${sessizBaslangic.minute}',
+              );
+              await prefs.setString(
+                'sessizBitis',
+                '${sessizBitis.hour}:${sessizBitis.minute}',
+              );
               await prefs.setString('suGecmisi', json.encode(suGecmisi));
             }
           }
@@ -673,6 +911,7 @@ jobs:
 
               return Column(
                 children: [
+                  // Su Damlası Animasyonu
                   SizedBox(
                     width: 200,
                     height: 210,
@@ -689,6 +928,7 @@ jobs:
                     ),
                   ),
                   const SizedBox(height: 8),
+                  // Yüzdelik Gösterim
                   Text(
                     '%${hamYuzde.toStringAsFixed(0)}',
                     style: TextStyle(
@@ -717,7 +957,10 @@ jobs:
                           SizedBox(width: 8),
                           Text(
                             'Hedef Tamamlandı!',
-                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ],
                       ),
@@ -732,7 +975,10 @@ jobs:
             final double dolulukOrani;
             final double dalgaFazi;
 
-            _SuDamlasiPainter({required this.dolulukOrani, required this.dalgaFazi});
+            _SuDamlasiPainter({
+              required this.dolulukOrani,
+              required this.dalgaFazi,
+            });
 
             @override
             void paint(Canvas canvas, Size size) {
@@ -740,15 +986,22 @@ jobs:
               final centerY = size.height / 2;
               final radius = min(size.width, size.height) / 2 - 10;
 
+              // Arka Plan Daire
               final arkaplanPaint = Paint()
                 ..color = const Color(0xFFE3F2FD)
                 ..style = PaintingStyle.fill;
               canvas.drawCircle(Offset(centerX, centerY), radius, arkaplanPaint);
 
+              // Su Dolumu ve Dalga Efekti
               if (dolulukOrani > 0) {
                 final suYuksekligi = max(4.0, radius * 2 * dolulukOrani);
                 final suUstY = centerY + radius - suYuksekligi;
-                final suRect = Rect.fromLTWH(centerX - radius, suUstY, radius * 2, suYuksekligi);
+                final suRect = Rect.fromLTWH(
+                  centerX - radius,
+                  suUstY,
+                  radius * 2,
+                  suYuksekligi,
+                );
 
                 final suPaint = Paint()
                   ..shader = const LinearGradient(
@@ -759,9 +1012,13 @@ jobs:
 
                 canvas.save();
                 canvas.clipPath(
-                  Path()..addOval(Rect.fromCircle(center: Offset(centerX, centerY), radius: radius)),
+                  Path()
+                    ..addOval(
+                      Rect.fromCircle(center: Offset(centerX, centerY), radius: radius),
+                    ),
                 );
 
+                // Ana su dalgası
                 final suPath = Path();
                 suPath.moveTo(centerX - radius, suUstY);
                 for (double x = centerX - radius; x <= centerX + radius; x += 2) {
@@ -773,6 +1030,7 @@ jobs:
                 suPath.close();
                 canvas.drawPath(suPath, suPaint);
 
+                // İkinci açık renkli dalga katmanı
                 final dalgaPaint = Paint()
                   ..color = Colors.white.withOpacity(0.28)
                   ..style = PaintingStyle.fill;
@@ -790,16 +1048,28 @@ jobs:
                 canvas.restore();
               }
 
+              // Kenarlık
               final kenarlikPaint = Paint()
                 ..color = const Color(0xFF2196F3)
                 ..style = PaintingStyle.stroke
                 ..strokeWidth = 3;
               canvas.drawCircle(Offset(centerX, centerY), radius, kenarlikPaint);
 
+              // Damla İkonu
               final damlaPath = Path();
               damlaPath.moveTo(centerX, centerY - radius + 24);
-              damlaPath.quadraticBezierTo(centerX - 20, centerY - 5, centerX, centerY + 15);
-              damlaPath.quadraticBezierTo(centerX + 20, centerY - 5, centerX, centerY - radius + 24);
+              damlaPath.quadraticBezierTo(
+                centerX - 20,
+                centerY - 5,
+                centerX,
+                centerY + 15,
+              );
+              damlaPath.quadraticBezierTo(
+                centerX + 20,
+                centerY - 5,
+                centerX,
+                centerY - radius + 24,
+              );
               canvas.drawPath(
                 damlaPath,
                 Paint()
@@ -810,7 +1080,8 @@ jobs:
 
             @override
             bool shouldRepaint(covariant _SuDamlasiPainter oldDelegate) =>
-                oldDelegate.dolulukOrani != dolulukOrani || oldDelegate.dalgaFazi != dalgaFazi;
+                oldDelegate.dolulukOrani != dolulukOrani ||
+                oldDelegate.dalgaFazi != dalgaFazi;
           }
           EOF
 
@@ -855,7 +1126,8 @@ jobs:
               } else {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
-                    content: Text('Lütfen 1 ile 5000 ml arasında geçerli bir miktar girin.'),
+                    content:
+                        Text('Lütfen 1 ile 5000 ml arasında geçerli bir miktar girin.'),
                     duration: Duration(seconds: 2),
                   ),
                 );
@@ -883,10 +1155,15 @@ jobs:
                         if (widget.seciliGunIcilen > 0)
                           TextButton.icon(
                             onPressed: () {
-                              final azaltilacak = widget.sonEklenenMiktar ?? widget.varsayilanBardakMl;
+                              final azaltilacak =
+                                  widget.sonEklenenMiktar ?? widget.varsayilanBardakMl;
                               widget.onAzalt(azaltilacak);
                             },
-                            icon: const Icon(Icons.undo, size: 18, color: Colors.redAccent),
+                            icon: const Icon(
+                              Icons.undo,
+                              size: 18,
+                              color: Colors.redAccent,
+                            ),
                             label: Text(
                               '-${widget.sonEklenenMiktar ?? widget.varsayilanBardakMl} ml Geri Al',
                               style: const TextStyle(color: Colors.redAccent),
@@ -898,13 +1175,34 @@ jobs:
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        _bardakButonu('🥛', 'Bardak\n(Özel)', widget.varsayilanBardakMl, const Color(0xFF64B5F6)),
-                        _bardakButonu('🥤', 'Büyük\nBardak', 330, const Color(0xFF42A5F5)),
-                        _bardakButonu('🍶', 'Küçük\nŞişe', 500, const Color(0xFF2196F3)),
-                        _bardakButonu('🫗', 'Sürahi', 1000, const Color(0xFF1E88E5)),
+                        _bardakButonu(
+                          '🥛',
+                          'Bardak\n(Özel)',
+                          widget.varsayilanBardakMl,
+                          const Color(0xFF64B5F6),
+                        ),
+                        _bardakButonu(
+                          '🥤',
+                          'Büyük\nBardak',
+                          330,
+                          const Color(0xFF42A5F5),
+                        ),
+                        _bardakButonu(
+                          '🍶',
+                          'Küçük\nŞişe',
+                          500,
+                          const Color(0xFF2196F3),
+                        ),
+                        _bardakButonu(
+                          '🫗',
+                          'Sürahi',
+                          1000,
+                          const Color(0xFF1E88E5),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 20),
+                    // Özel Miktar
                     Row(
                       children: [
                         Expanded(
@@ -914,11 +1212,19 @@ jobs:
                             onSubmitted: (_) => _ozelMiktarGonder(),
                             decoration: InputDecoration(
                               hintText: 'Özel miktar (ml)',
-                              prefixIcon: const Icon(Icons.edit, color: Color(0xFF2196F3)),
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                              prefixIcon: const Icon(
+                                Icons.edit,
+                                color: Color(0xFF2196F3),
+                              ),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
                               focusedBorder: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(12),
-                                borderSide: const BorderSide(color: Color(0xFF2196F3), width: 2),
+                                borderSide: const BorderSide(
+                                  color: Color(0xFF2196F3),
+                                  width: 2,
+                                ),
                               ),
                             ),
                           ),
@@ -928,10 +1234,18 @@ jobs:
                           onPressed: _ozelMiktarGonder,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFF2196F3),
-                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 24,
+                              vertical: 16,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
                           ),
-                          child: const Text('Ekle', style: TextStyle(color: Colors.white, fontSize: 16)),
+                          child: const Text(
+                            'Ekle',
+                            style: TextStyle(color: Colors.white, fontSize: 16),
+                          ),
                         ),
                       ],
                     ),
@@ -961,8 +1275,15 @@ jobs:
                         ),
                       ),
                       const SizedBox(height: 8),
-                      Text(label, textAlign: TextAlign.center, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
-                      Text('$ml ml', style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+                      Text(
+                        label,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+                      ),
+                      Text(
+                        '$ml ml',
+                        style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                      ),
                     ],
                   ),
                 ),
@@ -988,7 +1309,8 @@ jobs:
             BannerAd? _bannerAd;
             bool _isLoaded = false;
 
-            bool get _reklamDestekleniyor => !kIsWeb && (Platform.isAndroid || Platform.isIOS);
+            bool get _reklamDestekleniyor =>
+                !kIsWeb && (Platform.isAndroid || Platform.isIOS);
 
             String get _adUnitId {
               if (!kIsWeb && Platform.isIOS) {
@@ -1000,7 +1322,9 @@ jobs:
             @override
             void initState() {
               super.initState();
-              if (_reklamDestekleniyor) _loadAd();
+              if (_reklamDestekleniyor) {
+                _loadAd();
+              }
             }
 
             void _loadAd() {
@@ -1010,11 +1334,15 @@ jobs:
                 request: const AdRequest(),
                 listener: BannerAdListener(
                   onAdLoaded: (_) {
-                    if (mounted) setState(() => _isLoaded = true);
+                    if (mounted) {
+                      setState(() => _isLoaded = true);
+                    }
                   },
                   onAdFailedToLoad: (ad, error) {
                     ad.dispose();
-                    if (mounted) setState(() => _isLoaded = false);
+                    if (mounted) {
+                      setState(() => _isLoaded = false);
+                    }
                   },
                 ),
               )..load();
@@ -1028,7 +1356,9 @@ jobs:
 
             @override
             Widget build(BuildContext context) {
-              if (!_reklamDestekleniyor) return const SizedBox.shrink();
+              if (!_reklamDestekleniyor) {
+                return const SizedBox.shrink();
+              }
               return _isLoaded && _bannerAd != null
                   ? Container(
                       alignment: Alignment.center,
@@ -1079,16 +1409,24 @@ jobs:
                           children: [
                             Row(
                               children: [
-                                const Icon(Icons.history, size: 18, color: Color(0xFF1976D2)),
+                                const Icon(
+                                  Icons.history,
+                                  size: 18,
+                                  color: Color(0xFF1976D2),
+                                ),
                                 const SizedBox(width: 8),
                                 Text(
                                   'Seçili Tarih: ${provider.seciliTarihFormatli}',
-                                  style: const TextStyle(fontWeight: FontWeight.w600, color: Color(0xFF1976D2)),
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    color: Color(0xFF1976D2),
+                                  ),
                                 ),
                               ],
                             ),
                             TextButton(
-                              onPressed: () => context.read<SuTakipProvider>().buguneDon(),
+                              onPressed: () =>
+                                  context.read<SuTakipProvider>().buguneDon(),
                               child: const Text('Bugüne Dön'),
                             ),
                           ],
@@ -1096,25 +1434,109 @@ jobs:
                       ),
                     Expanded(
                       child: SingleChildScrollView(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
                         child: Column(
                           children: [
+                            // Akıllı Hedef Bilgi Çubuğu
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 20),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                  vertical: 8,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFE3F2FD),
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Flexible(
+                                      child: Text(
+                                        '🧠 Akıllı Hedef: ${provider.kilo}kg • ${provider.yas}y • ☕${provider.gunlukKafeinAdet}',
+                                        style: const TextStyle(
+                                          fontSize: 12.5,
+                                          fontWeight: FontWeight.w600,
+                                          color: Color(0xFF1565C0),
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const Text(
+                                          '☕',
+                                          style: TextStyle(fontSize: 14),
+                                        ),
+                                        IconButton(
+                                          visualDensity: VisualDensity.compact,
+                                          padding: EdgeInsets.zero,
+                                          constraints: const BoxConstraints(
+                                            minWidth: 26,
+                                            minHeight: 26,
+                                          ),
+                                          icon: const Icon(
+                                            Icons.remove_circle_outline,
+                                            size: 18,
+                                            color: Color(0xFF1565C0),
+                                          ),
+                                          onPressed: provider.gunlukKafeinAdet > 0
+                                              ? () => context
+                                                  .read<SuTakipProvider>()
+                                                  .gunlukKafeinGuncelle(
+                                                    provider.gunlukKafeinAdet - 1,
+                                                  )
+                                              : null,
+                                        ),
+                                        IconButton(
+                                          visualDensity: VisualDensity.compact,
+                                          padding: EdgeInsets.zero,
+                                          constraints: const BoxConstraints(
+                                            minWidth: 26,
+                                            minHeight: 26,
+                                          ),
+                                          icon: const Icon(
+                                            Icons.add_circle_outline,
+                                            size: 18,
+                                            color: Color(0xFF1565C0),
+                                          ),
+                                          onPressed: provider.gunlukKafeinAdet < 15
+                                              ? () => context
+                                                  .read<SuTakipProvider>()
+                                                  .gunlukKafeinGuncelle(
+                                                    provider.gunlukKafeinAdet + 1,
+                                                  )
+                                              : null,
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            // Su Seviyesi Göstergesi
                             SuSeviyesiGostergesi(
                               icilen: provider.seciliGunIcilen,
                               hedef: provider.gunlukHedef,
                             ),
-                            const SizedBox(height: 24),
+                            const SizedBox(height: 20),
+                            // Hızlı Ekle Butonları (Bardak Seçimi)
                             BardakSecimi(
                               varsayilanBardakMl: provider.bardakBoyutu,
                               seciliGunIcilen: provider.seciliGunIcilen,
                               sonEklenenMiktar: provider.sonEklenenMiktar,
                               onEkle: (ml) => context.read<SuTakipProvider>().suEkle(ml),
-                              onAzalt: (ml) => context.read<SuTakipProvider>().suAzalt(ml),
+                              onAzalt: (ml) =>
+                                  context.read<SuTakipProvider>().suAzalt(ml),
                             ),
                           ],
                         ),
                       ),
                     ),
+                    // Reklam Banner
                     const ReklamBanner(),
                   ],
                 ),
@@ -1153,8 +1575,13 @@ jobs:
             Widget build(BuildContext context) {
               final provider = context.watch<SuTakipProvider>();
               final haftalikDetay = provider.haftalikDetayliVeri;
-              final enYuksekGunluk = haftalikDetay.isEmpty ? 0.0 : haftalikDetay.map((e) => e.miktar).reduce(max);
-              final grafikTavan = max(provider.gunlukHedef * 1.3, max(enYuksekGunluk * 1.2, 1000.0));
+              final enYuksekGunluk = haftalikDetay.isEmpty
+                  ? 0.0
+                  : haftalikDetay.map((e) => e.miktar).reduce(max);
+              final grafikTavan = max(
+                provider.gunlukHedef * 1.3,
+                max(enYuksekGunluk * 1.2, 1000.0),
+              );
 
               return Scaffold(
                 appBar: AppBar(title: const Text('📊 İstatistikler')),
@@ -1163,11 +1590,17 @@ jobs:
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // Bugünkü Özet
                       _ozetKarti(provider),
                       const SizedBox(height: 24),
+                      // Haftalık Grafik
                       const Text(
                         '📈 Son 7 Gün',
-                        style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF2196F3)),
+                        style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF2196F3),
+                        ),
                       ),
                       const SizedBox(height: 16),
                       SizedBox(
@@ -1186,9 +1619,13 @@ jobs:
                                     toY: veri.miktar,
                                     color: hedefTamam
                                         ? Colors.green
-                                        : (veri.bugunMu ? const Color(0xFF1565C0) : const Color(0xFF2196F3)),
+                                        : (veri.bugunMu
+                                            ? const Color(0xFF1565C0)
+                                            : const Color(0xFF2196F3)),
                                     width: 22,
-                                    borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
+                                    borderRadius: const BorderRadius.vertical(
+                                      top: Radius.circular(8),
+                                    ),
                                   ),
                                 ],
                               );
@@ -1201,7 +1638,9 @@ jobs:
                                   reservedSize: 32,
                                   getTitlesWidget: (value, meta) {
                                     final idx = value.toInt();
-                                    if (idx < 0 || idx >= haftalikDetay.length) return const SizedBox.shrink();
+                                    if (idx < 0 || idx >= haftalikDetay.length) {
+                                      return const SizedBox.shrink();
+                                    }
                                     final veri = haftalikDetay[idx];
                                     return Padding(
                                       padding: const EdgeInsets.only(top: 8),
@@ -1209,8 +1648,12 @@ jobs:
                                         veri.kisaGunAdi,
                                         style: TextStyle(
                                           fontSize: 12,
-                                          fontWeight: veri.bugunMu ? FontWeight.bold : FontWeight.normal,
-                                          color: veri.bugunMu ? const Color(0xFF1565C0) : Colors.black87,
+                                          fontWeight: veri.bugunMu
+                                            ? FontWeight.bold
+                                            : FontWeight.normal,
+                                          color: veri.bugunMu
+                                              ? const Color(0xFF1565C0)
+                                              : Colors.black87,
                                         ),
                                       ),
                                     );
@@ -1222,19 +1665,30 @@ jobs:
                                   showTitles: true,
                                   reservedSize: 48,
                                   getTitlesWidget: (value, meta) {
-                                    return Text('${value.toInt()}ml', style: const TextStyle(fontSize: 10));
+                                    return Text(
+                                      '${value.toInt()}ml',
+                                      style: const TextStyle(fontSize: 10),
+                                    );
                                   },
                                 ),
                               ),
-                              topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                              rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                              topTitles: const AxisTitles(
+                                sideTitles: SideTitles(showTitles: false),
+                              ),
+                              rightTitles: const AxisTitles(
+                                sideTitles: SideTitles(showTitles: false),
+                              ),
                             ),
-                            gridData: const FlGridData(show: true, drawVerticalLine: false),
+                            gridData: const FlGridData(
+                              show: true,
+                              drawVerticalLine: false,
+                            ),
                             borderData: FlBorderData(show: false),
                           ),
                         ),
                       ),
                       const SizedBox(height: 24),
+                      // İstatistik Kartları
                       _istatistikKarti(
                         '🔥 Mevcut Seri / En İyi Seri',
                         '${provider.mevcutSeri} gün (Rekor: ${provider.enIyiSeri} gün)',
@@ -1260,6 +1714,7 @@ jobs:
                 ),
               );
             }
+
             Widget _ozetKarti(SuTakipProvider p) {
               final guvenliHedef = max(1, p.gunlukHedef);
               final yuzde = (p.bugunIcilen / guvenliHedef * 100).toStringAsFixed(0);
@@ -1268,7 +1723,9 @@ jobs:
                 width: double.infinity,
                 padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(colors: [Color(0xFF2196F3), Color(0xFF64B5F6)]),
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF2196F3), Color(0xFF64B5F6)],
+                  ),
                   borderRadius: BorderRadius.circular(20),
                   boxShadow: [
                     BoxShadow(
@@ -1280,32 +1737,55 @@ jobs:
                 ),
                 child: Column(
                   children: [
-                    const Text('Bugün', style: TextStyle(fontSize: 18, color: Colors.white70)),
+                    const Text(
+                      'Bugün',
+                      style: TextStyle(fontSize: 18, color: Colors.white70),
+                    ),
                     const SizedBox(height: 8),
                     Text(
                       '${p.bugunIcilen} / ${p.gunlukHedef} ml',
-                      style: const TextStyle(fontSize: 36, fontWeight: FontWeight.bold, color: Colors.white),
+                      style: const TextStyle(
+                        fontSize: 36,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
                     ),
                     const SizedBox(height: 8),
-                    Text('%$yuzde tamamlandı', style: const TextStyle(fontSize: 16, color: Colors.white70)),
+                    Text(
+                      '%$yuzde tamamlandı',
+                      style: const TextStyle(fontSize: 16, color: Colors.white70),
+                    ),
                   ],
                 ),
               );
             }
 
-            Widget _istatistikKarti(String baslik, String deger, IconData icon, Color renk) {
+            Widget _istatistikKarti(
+              String baslik,
+              String deger,
+              IconData icon,
+              Color renk,
+            ) {
               return Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(16),
-                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 8)],
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.05),
+                      blurRadius: 8,
+                    ),
+                  ],
                 ),
                 child: Row(
                   children: [
                     Container(
                       padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(color: renk.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
+                      decoration: BoxDecoration(
+                        color: renk.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                       child: Icon(icon, color: renk, size: 28),
                     ),
                     const SizedBox(width: 16),
@@ -1313,8 +1793,18 @@ jobs:
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(baslik, style: const TextStyle(fontSize: 14, color: Colors.grey)),
-                          Text(deger, style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: renk)),
+                          Text(
+                            baslik,
+                            style: const TextStyle(fontSize: 14, color: Colors.grey),
+                          ),
+                          Text(
+                            deger,
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                              color: renk,
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -1361,22 +1851,39 @@ jobs:
                 body: ListView(
                   padding: const EdgeInsets.all(20),
                   children: [
+                    // Hatırlatıcı Aç/Kapat
                     Container(
                       padding: const EdgeInsets.all(20),
                       decoration: BoxDecoration(
-                        gradient: const LinearGradient(colors: [Color(0xFF2196F3), Color(0xFF64B5F6)]),
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFF2196F3), Color(0xFF64B5F6)],
+                        ),
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.notifications_active, size: 40, color: Colors.white),
+                          const Icon(
+                            Icons.notifications_active,
+                            size: 40,
+                            color: Colors.white,
+                          ),
                           const SizedBox(width: 16),
                           const Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text('Hatırlatıcılar', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
-                                Text('Su içmeyi unutma!', style: TextStyle(color: Colors.white70)),
+                                Text(
+                                  'Hatırlatıcılar',
+                                  style: TextStyle(
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                                Text(
+                                  'Su içmeyi unutma!',
+                                  style: TextStyle(color: Colors.white70),
+                                ),
                               ],
                             ),
                           ),
@@ -1389,41 +1896,77 @@ jobs:
                       ),
                     ),
                     const SizedBox(height: 24),
-                    const Text('Hatırlatma Sıklığı', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF2196F3))),
+                    // Sıklık Seçimi
+                    const Text(
+                      'Hatırlatma Sıklığı',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF2196F3),
+                      ),
+                    ),
                     const SizedBox(height: 12),
                     ..._siklikSecenekleri.map((secenek) {
                       final dakika = secenek['dakika'] as int;
                       final etiket = secenek['etiket'] as String;
                       final secili = provider.hatirlatmaSikligi == dakika;
                       return Card(
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        color: secili ? const Color(0xFF2196F3).withOpacity(0.1) : null,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        color: secili
+                            ? const Color(0xFF2196F3).withOpacity(0.1)
+                            : null,
                         child: ListTile(
                           leading: Icon(
                             secili ? Icons.check_circle : Icons.circle_outlined,
                             color: secili ? const Color(0xFF2196F3) : Colors.grey,
                           ),
-                          title: Text(etiket, style: TextStyle(fontWeight: secili ? FontWeight.bold : FontWeight.normal)),
+                          title: Text(
+                            etiket,
+                            style: TextStyle(
+                              fontWeight: secili ? FontWeight.bold : FontWeight.normal,
+                            ),
+                          ),
                           onTap: () => provider.hatirlatmaSikligiGuncelle(dakika),
                         ),
                       );
                     }),
                     const SizedBox(height: 24),
-                    const Text('Sessiz Saatler', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF2196F3))),
+                    // Sessiz Saatler
+                    const Text(
+                      'Sessiz Saatler',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF2196F3),
+                      ),
+                    ),
                     const SizedBox(height: 8),
-                    Text('Bu saatler arasında bildirim gelmez', style: TextStyle(color: Colors.grey.shade600)),
+                    Text(
+                      'Bu saatler arasında bildirim gelmez',
+                      style: TextStyle(color: Colors.grey.shade600),
+                    ),
                     const SizedBox(height: 12),
                     Row(
                       children: [
                         Expanded(
-                          child: _saatSec('Başlangıç', provider.sessizBaslangic, (saat) => provider.sessizBaslangicGuncelle(saat)),
+                          child: _saatSec(
+                            'Başlangıç',
+                            provider.sessizBaslangic,
+                            (saat) => provider.sessizBaslangicGuncelle(saat),
+                          ),
                         ),
                         const Padding(
                           padding: EdgeInsets.symmetric(horizontal: 8),
                           child: Text('—', style: TextStyle(fontSize: 20)),
                         ),
                         Expanded(
-                          child: _saatSec('Bitiş', provider.sessizBitis, (saat) => provider.sessizBitisGuncelle(saat)),
+                          child: _saatSec(
+                            'Bitiş',
+                            provider.sessizBitis,
+                            (saat) => provider.sessizBitisGuncelle(saat),
+                          ),
                         ),
                       ],
                     ),
@@ -1432,12 +1975,17 @@ jobs:
                       onPressed: () async {
                         final gonderildi = await BildirimServisi().anlikBildirimGoster(
                           baslik: '💧 Hidrat Test Bildirimi',
-                          icerik: 'Harika! Su hatırlatıcı bildirimlerin sorunsuz çalışıyor.',
+                          icerik:
+                              'Harika! Su hatırlatıcı bildirimlerin sorunsuz çalışıyor.',
                         );
                         if (context.mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
-                              content: Text(gonderildi ? 'Test bildirimi gönderildi!' : 'Su içme zamanı! 💧 (Bildirim önizlemesi)'),
+                              content: Text(
+                                gonderildi
+                                    ? 'Test bildirimi gönderildi!'
+                                    : 'Su içme zamanı! 💧 (Bildirim önizlemesi)',
+                              ),
                             ),
                           );
                         }
@@ -1446,7 +1994,9 @@ jobs:
                       label: const Text('Test Bildirimi Gönder'),
                       style: OutlinedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                       ),
                     ),
                   ],
@@ -1454,16 +2004,25 @@ jobs:
               );
             }
 
-            Widget _saatSec(String label, TimeOfDay saat, Function(TimeOfDay) onSecildi) {
+            Widget _saatSec(
+              String label,
+              TimeOfDay saat,
+              Function(TimeOfDay) onSecildi,
+            ) {
               return GestureDetector(
                 onTap: () async {
-                  final secilen = await showTimePicker(context: context, initialTime: saat);
+                  final secilen = await showTimePicker(
+                    context: context,
+                    initialTime: saat,
+                  );
                   if (secilen != null) onSecildi(secilen);
                 },
                 child: Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    border: Border.all(color: const Color(0xFF2196F3).withOpacity(0.3)),
+                    border: Border.all(
+                      color: const Color(0xFF2196F3).withOpacity(0.3),
+                    ),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Column(
@@ -1472,7 +2031,11 @@ jobs:
                       const SizedBox(height: 4),
                       Text(
                         _saatFormatla(saat),
-                        style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF2196F3)),
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF2196F3),
+                        ),
                       ),
                     ],
                   ),
@@ -1495,37 +2058,166 @@ jobs:
               final provider = context.watch<SuTakipProvider>();
 
               return Scaffold(
-                appBar: AppBar(title: const Text('⚙️ Ayarlar')),
+                appBar: AppBar(title: const Text('⚙️ Ayarlar & Akıllı Hedef')),
                 body: ListView(
                   padding: const EdgeInsets.all(20),
                   children: [
-                    _ayarlarBolumu('👤 Profil', [
+                    // Akıllı Su Hesaplama Özeti Kartı
+                    _akilliHesapOzetiKarti(context, provider),
+                    const SizedBox(height: 20),
+
+                    // Kişisel & Fiziksel Kriterler
+                    _ayarlarBolumu('👤 Kişisel ve Fiziksel Kriterler', [
                       ListTile(
-                        leading: const Icon(Icons.person),
+                        leading: const Icon(Icons.person, color: Color(0xFF2196F3)),
                         title: const Text('İsim'),
                         subtitle: Text(provider.kullaniciAdi),
                         trailing: const Icon(Icons.chevron_right),
                         onTap: () => _isimDegistir(context),
                       ),
+                      const Divider(height: 1),
                       ListTile(
-                        leading: const Icon(Icons.monitor_weight),
+                        leading:
+                            const Icon(Icons.monitor_weight, color: Color(0xFF2196F3)),
                         title: const Text('Kilo'),
-                        subtitle: Text('${provider.kilo} kg (Önerilen: ${provider.kilo * 35} ml)'),
+                        subtitle: Text('${provider.kilo} kg'),
                         trailing: const Icon(Icons.chevron_right),
                         onTap: () => _kiloDegistir(context),
                       ),
+                      const Divider(height: 1),
+                      ListTile(
+                        leading: const Icon(Icons.cake, color: Color(0xFF2196F3)),
+                        title: const Text('Yaş'),
+                        subtitle: Text(
+                          '${provider.yas} yaş (${provider.yas < 30 ? "Yüksek metabolizma" : provider.yas < 55 ? "Standart metabolizma" : "Koruyucu hidrasyon"})',
+                        ),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () => _yasDegistir(context),
+                      ),
+                      const Divider(height: 1),
+                      ListTile(
+                        leading: const Icon(Icons.wc, color: Color(0xFF2196F3)),
+                        title: const Text('Cinsiyet ve Özel Durum'),
+                        subtitle: Text(
+                          SuTakipProvider.cinsiyetSecenekleri[provider.cinsiyetDurum] ??
+                              'Erkek',
+                        ),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () => _secenekSecDialog(
+                          context: context,
+                          baslik: 'Cinsiyet ve Özel Durum',
+                          secenekler: SuTakipProvider.cinsiyetSecenekleri,
+                          mevcutDeger: provider.cinsiyetDurum,
+                          onSecildi: (val) =>
+                              context.read<SuTakipProvider>().cinsiyetDurumGuncelle(val),
+                        ),
+                      ),
                     ]),
                     const SizedBox(height: 16),
-                    _ayarlarBolumu('🎯 Su Hedefi', [
+
+                    // Yaşam Tarzı ve Çevre Kriterleri
+                    _ayarlarBolumu('🏃 Yaşam Tarzı ve Çevre Kriterleri', [
                       ListTile(
-                        leading: const Icon(Icons.flag),
-                        title: const Text('Günlük Hedef'),
-                        subtitle: Text('${provider.gunlukHedef} ml'),
+                        leading:
+                            const Icon(Icons.directions_run, color: Color(0xFF2196F3)),
+                        title: const Text('Fiziksel Aktivite / Spor Düzeyi'),
+                        subtitle: Text(
+                          SuTakipProvider.aktiviteSecenekleri[provider.aktiviteDuzeyi] ??
+                              '',
+                        ),
                         trailing: const Icon(Icons.chevron_right),
+                        onTap: () => _secenekSecDialog(
+                          context: context,
+                          baslik: 'Fiziksel Aktivite Düzeyi',
+                          secenekler: SuTakipProvider.aktiviteSecenekleri,
+                          mevcutDeger: provider.aktiviteDuzeyi,
+                          onSecildi: (val) =>
+                              context.read<SuTakipProvider>().aktiviteDuzeyiGuncelle(val),
+                        ),
+                      ),
+                      const Divider(height: 1),
+                      ListTile(
+                        leading: const Icon(Icons.wb_sunny, color: Color(0xFF2196F3)),
+                        title: const Text('Hava Sıcaklığı / İklim'),
+                        subtitle: Text(
+                          SuTakipProvider.havaSecenekleri[provider.havaDurumu] ?? '',
+                        ),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () => _secenekSecDialog(
+                          context: context,
+                          baslik: 'Hava Sıcaklığı / İklim',
+                          secenekler: SuTakipProvider.havaSecenekleri,
+                          mevcutDeger: provider.havaDurumu,
+                          onSecildi: (val) =>
+                              context.read<SuTakipProvider>().havaDurumuGuncelle(val),
+                        ),
+                      ),
+                      const Divider(height: 1),
+                      ListTile(
+                        leading: const Icon(Icons.coffee, color: Colors.brown),
+                        title: const Text('Günlük Çay / Kahve Tüketimi'),
+                        subtitle: Text(
+                          'Günde ${provider.gunlukKafeinAdet} fincan/bardak (+${provider.kafeinEkSu} ml dengeleme)',
+                        ),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.remove_circle_outline),
+                              onPressed: provider.gunlukKafeinAdet > 0
+                                  ? () => context
+                                      .read<SuTakipProvider>()
+                                      .gunlukKafeinGuncelle(provider.gunlukKafeinAdet - 1)
+                                  : null,
+                            ),
+                            Text(
+                              '${provider.gunlukKafeinAdet}',
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.add_circle_outline),
+                              onPressed: provider.gunlukKafeinAdet < 15
+                                  ? () => context
+                                      .read<SuTakipProvider>()
+                                      .gunlukKafeinGuncelle(provider.gunlukKafeinAdet + 1)
+                                  : null,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ]),
+                    const SizedBox(height: 16),
+
+                    // Hedef ve Bardak Ayarları
+                    _ayarlarBolumu('🎯 Hedef ve Bardak Ayarları', [
+                      ListTile(
+                        leading: const Icon(Icons.flag, color: Color(0xFF2196F3)),
+                        title: const Text('Aktif Günlük Su Hedefi'),
+                        subtitle: Text(
+                          '${provider.gunlukHedef} ml (${provider.otomatikHedefKullan ? "Akıllı Hesaplama Aktif" : "Manuel Belirlendi - Önerilen: ${provider.onerilenHedef} ml"})',
+                        ),
+                        trailing: const Icon(Icons.edit),
                         onTap: () => _hedefDegistir(context),
                       ),
+                      if (!provider.otomatikHedefKullan)
+                        Padding(
+                          padding:
+                              const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                          child: OutlinedButton.icon(
+                            onPressed: () =>
+                                context.read<SuTakipProvider>().onerilenHedefiAktifEt(),
+                            icon: const Icon(Icons.auto_awesome, size: 18),
+                            label: Text(
+                              'Akıllı Önerilen Hedefe Dön (${provider.onerilenHedef} ml)',
+                            ),
+                          ),
+                        ),
+                      const Divider(height: 1),
                       ListTile(
-                        leading: const Icon(Icons.local_drink),
+                        leading: const Icon(Icons.local_drink, color: Color(0xFF2196F3)),
                         title: const Text('Varsayılan Bardak Boyutu'),
                         subtitle: Text('${provider.bardakBoyutu} ml'),
                         trailing: const Icon(Icons.chevron_right),
@@ -1533,25 +2225,136 @@ jobs:
                       ),
                     ]),
                     const SizedBox(height: 16),
+
+                    // Veri Yönetimi
                     _ayarlarBolumu('💾 Veri', [
                       ListTile(
                         leading: const Icon(Icons.delete_outline, color: Colors.red),
-                        title: const Text('Verileri Sıfırla', style: TextStyle(color: Colors.red)),
+                        title: const Text(
+                          'Verileri Sıfırla',
+                          style: TextStyle(color: Colors.red),
+                        ),
                         onTap: () => _verileriSifirla(context),
                       ),
                     ]),
-                    const SizedBox(height: 32),
+                    const SizedBox(height: 28),
+                    // Hakkında
                     const Center(
                       child: Column(
                         children: [
                           Icon(Icons.water_drop, size: 48, color: Color(0xFF2196F3)),
                           SizedBox(height: 8),
-                          Text('Hidrat v1.0.0', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                          Text('Su içmeyi unutma! 💧', style: TextStyle(color: Colors.grey)),
+                          Text(
+                            'Hidrat v1.1.0',
+                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                          ),
+                          Text(
+                            'Akıllı Su Takip & Hatırlatıcı 💧',
+                            style: TextStyle(color: Colors.grey),
+                          ),
                         ],
                       ),
                     ),
                     const SizedBox(height: 16),
+                  ],
+                ),
+              );
+            }
+
+            Widget _akilliHesapOzetiKarti(BuildContext context, SuTakipProvider p) {
+              return Container(
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF1976D2), Color(0xFF42A5F5)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF2196F3).withOpacity(0.3),
+                      blurRadius: 12,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Row(
+                          children: [
+                            Icon(Icons.psychology, color: Colors.white, size: 26),
+                            SizedBox(width: 8),
+                            Text(
+                              'Akıllı Su İhtiyacı Analizi',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 17,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                        Container(
+                          padding:
+                              const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            '${p.onerilenHedef} ml / gün',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    const Divider(color: Colors.white24, height: 1),
+                    const SizedBox(height: 10),
+                    _hesapSatiri(
+                      'Bazal İhtiyaç (${p.kilo} kg, ${p.yas} yaş)',
+                      '${p.bazalSuIhtiyaci} ml',
+                    ),
+                    if (p.ozelDurumEkSu > 0)
+                      _hesapSatiri('Özel Durum (Hamile/Emziren)', '+${p.ozelDurumEkSu} ml'),
+                    _hesapSatiri('Fiziksel Aktivite Ek İhtiyacı', '+${p.aktiviteEkSu} ml'),
+                    _hesapSatiri('Hava / İklim Ek İhtiyacı', '+${p.havaEkSu} ml'),
+                    _hesapSatiri(
+                      'Çay/Kahve Dengeleme (${p.gunlukKafeinAdet} adet)',
+                      '+${p.kafeinEkSu} ml',
+                    ),
+                  ],
+                ),
+              );
+            }
+
+            Widget _hesapSatiri(String etiket, String deger) {
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 3),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      etiket,
+                      style: const TextStyle(color: Colors.white70, fontSize: 13),
+                    ),
+                    Text(
+                      deger,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                      ),
+                    ),
                   ],
                 ),
               );
@@ -1565,18 +2368,65 @@ jobs:
                     padding: const EdgeInsets.only(left: 16, bottom: 8),
                     child: Text(
                       baslik,
-                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF2196F3)),
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF2196F3),
+                      ),
                     ),
                   ),
                   Container(
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(16),
-                      boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 8)],
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.05),
+                          blurRadius: 8,
+                        ),
+                      ],
                     ),
                     child: Column(children: cocuklar),
                   ),
                 ],
+              );
+            }
+
+            Future<void> _secenekSecDialog({
+              required BuildContext context,
+              required String baslik,
+              required Map<String, String> secenekler,
+              required String mevcutDeger,
+              required Function(String) onSecildi,
+            }) async {
+              await showDialog(
+                context: context,
+                builder: (dialogContext) => AlertDialog(
+                  title: Text(baslik),
+                  content: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: secenekler.entries.map((e) {
+                      final secili = e.key == mevcutDeger;
+                      return ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: Icon(
+                          secili ? Icons.radio_button_checked : Icons.radio_button_off,
+                          color: secili ? const Color(0xFF2196F3) : Colors.grey,
+                        ),
+                        title: Text(
+                          e.value,
+                          style: TextStyle(
+                            fontWeight: secili ? FontWeight.bold : FontWeight.normal,
+                          ),
+                        ),
+                        onTap: () {
+                          onSecildi(e.key);
+                          Navigator.pop(dialogContext);
+                        },
+                      );
+                    }).toList(),
+                  ),
+                ),
               );
             }
 
@@ -1609,7 +2459,34 @@ jobs:
                   context.read<SuTakipProvider>().kiloGuncelle(kilo);
                 } else {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Lütfen 20 ile 300 kg arasında geçerli bir değer girin.')),
+                    const SnackBar(
+                      content:
+                          Text('Lütfen 20 ile 300 kg arasında geçerli bir değer girin.'),
+                    ),
+                  );
+                }
+              }
+            }
+
+            Future<void> _yasDegistir(BuildContext context) async {
+              final mevcutYas = context.read<SuTakipProvider>().yas.toString();
+              final girilen = await _metinGirisDialogu(
+                context: context,
+                baslik: 'Yaşınızı Girin (10 - 100)',
+                ipucu: '30',
+                baslangicDegeri: mevcutYas,
+                sayisalMi: true,
+              );
+              if (girilen != null && context.mounted) {
+                final yas = int.tryParse(girilen);
+                if (yas != null && yas >= 10 && yas <= 100) {
+                  context.read<SuTakipProvider>().yasGuncelle(yas);
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content:
+                          Text('Lütfen 10 ile 100 arasında geçerli bir yaş girin.'),
+                    ),
                   );
                 }
               }
@@ -1619,7 +2496,7 @@ jobs:
               final mevcutHedef = context.read<SuTakipProvider>().gunlukHedef.toString();
               final girilen = await _metinGirisDialogu(
                 context: context,
-                baslik: 'Günlük Su Hedefi (500 - 10000 ml)',
+                baslik: 'Manuel Su Hedefi (500 - 10000 ml)',
                 ipucu: '2500',
                 baslangicDegeri: mevcutHedef,
                 sayisalMi: true,
@@ -1630,7 +2507,9 @@ jobs:
                   context.read<SuTakipProvider>().hedefGuncelle(hedef);
                 } else {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Lütfen 500 ile 10000 ml arasında bir hedef girin.')),
+                    const SnackBar(
+                      content: Text('Lütfen 500 ile 10000 ml arasında bir hedef girin.'),
+                    ),
                   );
                 }
               }
@@ -1651,7 +2530,9 @@ jobs:
                   context.read<SuTakipProvider>().bardakBoyutuGuncelle(boyut);
                 } else {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Lütfen 50 ile 2000 ml arasında bir boyut girin.')),
+                    const SnackBar(
+                      content: Text('Lütfen 50 ile 2000 ml arasında bir boyut girin.'),
+                    ),
                   );
                 }
               }
@@ -1677,8 +2558,14 @@ jobs:
                     onSubmitted: (val) => Navigator.pop(dialogContext, val),
                   ),
                   actions: [
-                    TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('İptal')),
-                    ElevatedButton(onPressed: () => Navigator.pop(dialogContext, controller.text), child: const Text('Kaydet')),
+                    TextButton(
+                      onPressed: () => Navigator.pop(dialogContext),
+                      child: const Text('İptal'),
+                    ),
+                    ElevatedButton(
+                      onPressed: () => Navigator.pop(dialogContext, controller.text),
+                      child: const Text('Kaydet'),
+                    ),
                   ],
                 ),
               );
@@ -1691,16 +2578,23 @@ jobs:
                 context: context,
                 builder: (dialogContext) => AlertDialog(
                   title: const Text('Emin misiniz?'),
-                  content: const Text('Tüm su takip verileriniz silinecek. Bu işlem geri alınamaz.'),
+                  content: const Text(
+                    'Tüm su takip verileriniz silinecek. Bu işlem geri alınamaz.',
+                  ),
                   actions: [
-                    TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('İptal')),
+                    TextButton(
+                      onPressed: () => Navigator.pop(dialogContext),
+                      child: const Text('İptal'),
+                    ),
                     ElevatedButton(
                       style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
                       onPressed: () {
                         context.read<SuTakipProvider>().verileriSifirla();
                         Navigator.pop(dialogContext);
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Tüm su takip verileri sıfırlandı.')),
+                          const SnackBar(
+                            content: Text('Tüm su takip verileri sıfırlandı.'),
+                          ),
                         );
                       },
                       child: const Text('Sil', style: TextStyle(color: Colors.white)),
@@ -1714,6 +2608,7 @@ jobs:
 
           cat > android/app/src/main/AndroidManifest.xml << 'EOF'
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <!-- Bildirim ve İnternet (AdMob) İzinleri -->
               <uses-permission android:name="android.permission.INTERNET"/>
               <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
               <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
@@ -1740,9 +2635,12 @@ jobs:
                           <category android:name="android.intent.category.LAUNCHER"/>
                       </intent-filter>
                   </activity>
+
+                  <!-- AdMob Test Uygulama ID'si (Yayınlamadan önce kendi AdMob App ID'niz ile değiştirin) -->
                   <meta-data
                       android:name="com.google.android.gms.ads.APPLICATION_ID"
                       android:value="ca-app-pub-3940256099942544~3347511713"/>
+
                   <meta-data
                       android:name="flutterEmbedding"
                       android:value="2" />
@@ -1799,7 +2697,7 @@ jobs:
 
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add lib pubspec.yaml assets android/app/src/main/AndroidManifest.xml android/app/build.gradle
+          git add lib pubspec.yaml assets android/app/src/main/AndroidManifest.xml android/app/build.gradle android/app/src/main/kotlin/com/hidrat/app/MainActivity.kt
           git diff --staged --quiet || git commit -m "Update Hidrat app source files [skip ci]" && git push || true
 
       - name: Bagimliliklari Yukle
